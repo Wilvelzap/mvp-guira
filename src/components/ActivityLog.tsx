@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { motion } from 'framer-motion'
-import { Clock, CheckCircle, Info, AlertTriangle } from 'lucide-react'
+import { Clock, CheckCircle, Info } from 'lucide-react'
 
 export const ActivityLog: React.FC = () => {
     const { user } = useAuth()

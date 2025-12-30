@@ -99,7 +99,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
  * Persists Virtual Account Events for full traceability.
  */
 export async function logVirtualAccountEvent(bridgeEventId: string, vaId: string, type: string, amount: number, currency: string, payload: any) {
-    const { error } = await supabase.from('bridge_virtual_account_events').upsert({
+    await supabase.from('bridge_virtual_account_events').upsert({
         bridge_event_id: bridgeEventId,
         bridge_virtual_account_id: vaId,
         event_type: type,

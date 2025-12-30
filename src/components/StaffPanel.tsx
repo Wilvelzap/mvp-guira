@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
     Users,
-    CheckCircle,
     ExternalLink,
     Search,
     ArrowUpRight,
@@ -13,7 +12,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 export const StaffPanel: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers'>('onboarding')
     const [items, setItems] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [searchQuery, setSearchQuery] = useState('')
 
@@ -22,7 +20,6 @@ export const StaffPanel: React.FC = () => {
     }, [activeTab])
 
     const fetchData = async () => {
-        setLoading(true)
         let query: any
 
         if (activeTab === 'onboarding') {
@@ -35,7 +32,6 @@ export const StaffPanel: React.FC = () => {
 
         const { data } = await query
         if (data) setItems(data)
-        setLoading(false)
     }
 
     const handleUpdateStatus = async (id: string, table: string, status: string, additionalData: any = {}) => {
