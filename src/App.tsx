@@ -18,6 +18,12 @@ import {
 const AppContent = () => {
   const { session, profile, isRecovering, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState<'wallet' | 'payments' | 'activity' | 'staff'>('wallet')
+  const [paymentIntent, setPaymentIntent] = useState<any>(null)
+
+  const handleNavigate = (tab: any, intent?: any) => {
+    setActiveTab(tab)
+    if (intent) setPaymentIntent(intent)
+  }
 
   if (!session || isRecovering) return <AuthPage />
   if (!profile) return <div className="loading-spinner">Inicializando perfil...</div>
@@ -51,21 +57,21 @@ const AppContent = () => {
           {profile.role === 'client' && (
             <>
               <button
-                onClick={() => setActiveTab('wallet')}
+                onClick={() => handleNavigate('wallet')}
                 className={`nav-item ${activeTab === 'wallet' ? 'active' : ''}`}
               >
                 <Wallet size={20} /> Mi Billetera
                 {activeTab === 'wallet' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
               </button>
               <button
-                onClick={() => setActiveTab('payments')}
+                onClick={() => handleNavigate('payments', null)}
                 className={`nav-item ${activeTab === 'payments' ? 'active' : ''}`}
               >
                 <CreditCard size={20} /> Pagos
                 {activeTab === 'payments' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
               </button>
               <button
-                onClick={() => setActiveTab('activity')}
+                onClick={() => handleNavigate('activity')}
                 className={`nav-item ${activeTab === 'activity' ? 'active' : ''}`}
               >
                 <Activity size={20} /> Actividad
@@ -76,7 +82,7 @@ const AppContent = () => {
 
           {(profile.role === 'staff' || profile.role === 'admin') && (
             <button
-              onClick={() => setActiveTab('staff')}
+              onClick={() => handleNavigate('staff')}
               className={`nav-item ${activeTab === 'staff' ? 'active' : ''}`}
             >
               <ShieldCheck size={20} /> Administración
@@ -101,8 +107,8 @@ const AppContent = () => {
       {/* Main Content */}
       <main className="main-content">
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          {activeTab === 'wallet' && <WalletDashboard />}
-          {activeTab === 'payments' && <PaymentsPanel />}
+          {activeTab === 'wallet' && <WalletDashboard onNavigate={handleNavigate} />}
+          {activeTab === 'payments' && <PaymentsPanel initialRoute={paymentIntent} onRouteClear={() => setPaymentIntent(null)} />}
           {activeTab === 'activity' && <ActivityLog />}
           {activeTab === 'staff' && <StaffPanel />}
         </div>

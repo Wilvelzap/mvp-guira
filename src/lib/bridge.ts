@@ -12,6 +12,7 @@ export interface CreateTransferParams {
     idempotencyKey: string
     destinationId?: string
     destinationType?: 'wallet' | 'external_account' | 'external_crypto_address'
+    network?: string
 }
 
 /**
@@ -86,6 +87,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
             destination_id: params.destinationId,
             metadata: {
                 system: 'guira-bridge-v1',
+                network: params.network,
                 timestamp: new Date().toISOString()
             }
         })

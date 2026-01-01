@@ -10,7 +10,7 @@ import {
     AlertCircle
 } from 'lucide-react'
 
-export const WalletDashboard: React.FC = () => {
+export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) => void }> = ({ onNavigate }) => {
     const { user } = useAuth()
     const [balance, setBalance] = useState(0)
     const [transactions, setTransactions] = useState<any[]>([])
@@ -85,15 +85,33 @@ export const WalletDashboard: React.FC = () => {
                 <div style={{ position: 'relative', zIndex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', opacity: 0.8 }}>
                         <Wallet size={20} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saldo Actual</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tu saldo disponible</span>
                     </div>
                     <div style={{ fontSize: '3.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
                         ${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </div>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                        <button className="btn-primary" style={{ background: '#fff', color: 'var(--primary)', flex: 1, padding: '0.875rem' }}>Cargar Fondos</button>
-                        <button className="btn-primary" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', flex: 1, padding: '0.875rem', boxShadow: 'none' }}>Retirar</button>
+                        <button
+                            onClick={() => onNavigate?.('payments', 'bank_to_crypto')}
+                            className="btn-primary"
+                            style={{ background: '#fff', color: 'var(--primary)', flex: 1, padding: '0.875rem' }}
+                        >
+                            Cargar Fondos
+                        </button>
+                        <button
+                            onClick={() => onNavigate?.('payments', 'crypto_to_bank')}
+                            className="btn-primary"
+                            style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', flex: 1, padding: '0.875rem', boxShadow: 'none' }}
+                        >
+                            Retirar
+                        </button>
                     </div>
+                    {balance === 0 && (
+                        <div style={{ marginTop: '1.5rem', background: 'rgba(255,255,255,0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <AlertCircle size={16} color="#fff" />
+                            <p style={{ margin: 0, opacity: 0.9 }}>Para comenzar, crea una ruta de depósito y envía fondos desde tu banco o wallet.</p>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -129,7 +147,7 @@ export const WalletDashboard: React.FC = () => {
                 {transactions.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '3rem 0', opacity: 0.5 }}>
                         <AlertCircle size={40} style={{ marginBottom: '1rem' }} />
-                        <p>No se encontraron transacciones aún.</p>
+                        <p>Aún no tienes movimientos. Crea una ruta de depósito para comenzar.</p>
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
