@@ -136,20 +136,20 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
     const translateStatus = (status: string) => {
         const statuses: any = {
-            'submitted': '📩 Enviado',
-            'active': '✅ Activo',
-            'paid': '💰 Pagado',
-            'pending': '⏳ Pendiente',
-            'rejected': '❌ Rechazado'
+            'submitted': 'Solicitado',
+            'active': 'Activo',
+            'paid': 'Completado',
+            'pending': 'Pendiente',
+            'rejected': 'Rechazado'
         }
         return statuses[status] || status
     }
 
     const translateType = (type: string) => {
         const types: any = {
-            'ACH_to_crypto': '🏦 Banco EE.UU. ➡️ 💸 Cripto',
-            'crypto_to_crypto': '🌐 Wallet ➡️ 💼 Billetera Guira',
-            'incoming_transfer': '📥 Depósito USDT (TRON)'
+            'ACH_to_crypto': 'Banco (EE.UU.) a Crypto',
+            'crypto_to_crypto': 'Crypto a Crypto',
+            'incoming_transfer': 'Depósito USDT'
         }
         return types[type] || type.replace(/_/g, ' ')
     }
@@ -208,13 +208,17 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     cursor: 'pointer',
                                     border: '1px solid transparent',
                                     transition: 'all 0.2s',
-                                    padding: '2rem'
+                                    padding: '2.5rem',
+                                    textAlign: 'center',
+                                    background: '#ffffff'
                                 }}
                             >
-                                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🏦</div>
-                                <h4 style={{ margin: 0, fontSize: '1.2rem' }}>Recibir dinero desde banco (EE.UU.)</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-                                    Recibe transferencias bancarias desde Estados Unidos y conviértelas automáticamente en stablecoins en tu wallet.
+                                <div style={{ width: '80px', height: '80px', margin: '0 auto 1.5rem', background: '#fff', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <img src="/assets/branding/icon_bank_to_crypto.png" alt="Banco a Cripto" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Banco (EE.UU.) a Cripto</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                                    Recibe transferencias bancarias desde Estados Unidos y conviértelas automáticamente en stablecoins.
                                 </p>
                             </div>
 
@@ -225,13 +229,17 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     cursor: 'pointer',
                                     border: '1px solid transparent',
                                     transition: 'all 0.2s',
-                                    padding: '2rem'
+                                    padding: '2.5rem',
+                                    textAlign: 'center',
+                                    background: '#ffffff'
                                 }}
                             >
-                                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔁</div>
-                                <h4 style={{ margin: 0, fontSize: '1.2rem' }}>Recibir desde otra wallet cripto</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-                                    Recibe pagos desde otras wallets o plataformas cripto directamente en tu billetera.
+                                <div style={{ width: '80px', height: '80px', margin: '0 auto 1.5rem', background: '#fff', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <img src="/assets/branding/icon_crypto_to_crypto.png" alt="Wallet a Wallet" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                </div>
+                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Cripto a Cripto</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                                    Recibe pagos desde otras billeteras o plataformas cripto directamente en tu cuenta Guira.
                                 </p>
                             </div>
 
@@ -242,13 +250,31 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     cursor: 'pointer',
                                     border: '1px solid transparent',
                                     transition: 'all 0.2s',
-                                    padding: '2rem'
+                                    padding: '2.5rem',
+                                    textAlign: 'center',
+                                    background: '#ffffff'
                                 }}
                             >
-                                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>💸</div>
-                                <h4 style={{ margin: 0, fontSize: '1.2rem' }}>Enviar dinero a un banco</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-                                    Convierte tus criptoactivos y envía el dinero a una cuenta bancaria vía ACH o Wire.
+                                <div style={{
+                                    width: '80px',
+                                    height: '80px',
+                                    margin: '0 auto 1.5rem',
+                                    background: 'linear-gradient(135deg, #0052FF 0%, #1E4A8C 100%)',
+                                    borderRadius: '24px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#fff',
+                                    boxShadow: '0 10px 20px -5px rgba(0, 82, 255, 0.3)',
+                                    position: 'relative',
+                                    overflow: 'hidden'
+                                }}>
+                                    <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at top left, rgba(255,255,255,0.2) 0%, transparent 70%)' }} />
+                                    <Globe size={40} />
+                                </div>
+                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Enviar dinero a un banco</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                                    Convierte tus activos digitales y envía el dinero a cuentas bancarias vía ACH o Wire.
                                 </p>
                             </div>
                         </div>
@@ -256,10 +282,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 ) : (
                     <motion.div key="form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="premium-card" style={{ background: '#F8FAFC' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                            <h4 style={{ margin: 0 }}>
-                                {selectedRoute === 'bank_to_crypto' && '🏦 Configurar recibo desde Banco'}
-                                {selectedRoute === 'crypto_to_crypto' && '🔁 Configurar recibo desde otra Wallet'}
-                                {selectedRoute === 'crypto_to_bank' && '💸 Configurar envío a Banco'}
+                            <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
+                                {selectedRoute === 'bank_to_crypto' && 'Recibir fondos desde Banco'}
+                                {selectedRoute === 'crypto_to_crypto' && 'Recibir fondos desde Wallet'}
+                                {selectedRoute === 'crypto_to_bank' && 'Enviar fondos a Banco'}
                             </h4>
                             <button onClick={resetFlow} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}>
                                 Volver atrás
@@ -282,11 +308,11 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                             Tu wallet debe ser compatible con esta red.
                                         </p>
                                         <select value={receiveNetwork} onChange={e => setReceiveNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
-                                            <option value="base">Base 🔵</option>
-                                            <option value="polygon">Polygon 🟣</option>
-                                            <option value="arbitrum">Arbitrum 💙</option>
-                                            <option value="solana">Solana ◎</option>
-                                            <option value="ethereum">Ethereum ⟠</option>
+                                            <option value="base">Base</option>
+                                            <option value="polygon">Polygon</option>
+                                            <option value="arbitrum">Arbitrum</option>
+                                            <option value="solana">Solana</option>
+                                            <option value="ethereum">Ethereum</option>
                                         </select>
                                     </div>
 
@@ -476,7 +502,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
                                         {route.status === 'active' && route.instructions ? (
                                             <div style={{ marginTop: '1rem', background: '#F1F5F9', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
-                                                {route.instructions.banco && <div>🏦 <b>Banco:</b> {route.instructions.banco}</div>}
+                                                {route.instructions.banco && <div><b>Banco:</b> {route.instructions.banco}</div>}
                                                 {route.instructions.cuenta && <div><b>Cuenta:</b> {route.instructions.cuenta}</div>}
                                                 {route.instructions.routing && <div><b>Routing:</b> {route.instructions.routing}</div>}
                                                 {route.instructions.address && (
@@ -518,10 +544,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                 {bridgeTransfers.map(trans => (
                                                     <tr key={trans.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                         <td style={{ padding: '1.25rem' }}>
-                                                            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                                                                {trans.transfer_kind === 'wallet_to_external_bank' ? '💼 ➡️ 🏦 Banco' :
-                                                                    trans.transfer_kind === 'wallet_to_external_crypto' ? '💼 ➡️ 🌐 Wallet' :
-                                                                        '💼 ➡️ 💼 Interno'}
+                                                            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                                                                {trans.transfer_kind === 'wallet_to_external_bank' ? 'Envío a Banco' :
+                                                                    trans.transfer_kind === 'wallet_to_external_crypto' ? 'Envío a Wallet Externa' :
+                                                                        'Transferencia Interna'}
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
                                                                 {trans.business_purpose.replace(/_/g, ' ')}
