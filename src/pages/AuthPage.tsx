@@ -30,7 +30,13 @@ export const AuthPage: React.FC = () => {
                 const { error } = await supabase.auth.signInWithPassword({ email, password })
                 if (error) throw error
             } else if (authMode === 'signup') {
-                const { error } = await supabase.auth.signUp({ email, password })
+                const { error } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
+                })
                 if (error) throw error
                 setMessage('¡Revisa tu correo para el enlace de confirmación!')
             } else if (authMode === 'recovery') {
