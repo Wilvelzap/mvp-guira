@@ -87,21 +87,21 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
                         <Wallet size={20} />
                         <span style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tu saldo disponible</span>
                     </div>
-                    <div style={{ fontSize: '3.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+                    <div style={{ fontSize: 'clamp(2rem, 8vw, 3.5rem)', fontWeight: 800, marginBottom: '0.5rem' }}>
                         ${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem', flexDirection: 'row', flexWrap: 'wrap' }}>
                         <button
                             onClick={() => onNavigate?.('payments', 'bank_to_crypto')}
                             className="btn-primary"
-                            style={{ background: '#fff', color: 'var(--primary)', flex: 1, padding: '0.875rem' }}
+                            style={{ background: '#fff', color: 'var(--primary)', flex: '1 1 140px', padding: '0.875rem' }}
                         >
                             Cargar Fondos
                         </button>
                         <button
                             onClick={() => onNavigate?.('payments', 'crypto_to_bank')}
                             className="btn-primary"
-                            style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', flex: 1, padding: '0.875rem', boxShadow: 'none' }}
+                            style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', flex: '1 1 140px', padding: '0.875rem', boxShadow: 'none' }}
                         >
                             Retirar
                         </button>

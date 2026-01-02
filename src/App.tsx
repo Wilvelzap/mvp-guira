@@ -12,17 +12,21 @@ import {
   Activity,
   ShieldCheck,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  Menu,
+  X
 } from 'lucide-react'
 
 const AppContent = () => {
   const { session, profile, isRecovering, signOut } = useAuth()
   const [activeTab, setActiveTab] = useState<'wallet' | 'payments' | 'activity' | 'staff'>('wallet')
   const [paymentIntent, setPaymentIntent] = useState<any>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const handleNavigate = (tab: any, intent?: any) => {
     setActiveTab(tab)
     if (intent) setPaymentIntent(intent)
+    setIsSidebarOpen(false) // Close sidebar on navigate
   }
 
   if (!session || isRecovering) return <AuthPage />
@@ -32,8 +36,17 @@ const AppContent = () => {
   if (profile.role === 'client' && profile.onboarding_status !== 'verified') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-main)' }}>
-        <header style={{ padding: '1.5rem 2.5rem', background: '#fff', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <img src="/logo.png" alt="Guira" style={{ height: '40px' }} />
+        <header style={{
+          padding: '1rem',
+          background: '#fff',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <img src="/logo.png" alt="Guira" style={{ height: '32px' }} />
           <button onClick={() => signOut()} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
             <LogOut size={16} /> Cerrar Sesión
           </button>
@@ -46,9 +59,47 @@ const AppContent = () => {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-main)' }}>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-main)', position: 'relative' }}>
+      {/* Mobile Header */}
+      <header style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '64px',
+        background: '#fff',
+        borderBottom: '1px solid var(--border)',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 1rem',
+        zIndex: 900
+      }} className="mobile-only">
+        <img src="/logo.png" alt="Guira" style={{ height: '32px' }} />
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          style={{ background: 'transparent', color: 'var(--primary)', padding: '0.5rem' }}
+        >
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </header>
+
+      {/* Sidebar Overlay for Mobile */}
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 950,
+            backdropFilter: 'blur(4px)'
+          }}
+          className="mobile-only"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
         <div style={{ padding: '0 1rem 2.5rem 1rem' }}>
           <img src="/logo.png" alt="Guira" style={{ height: '50px' }} />
         </div>

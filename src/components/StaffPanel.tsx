@@ -117,14 +117,23 @@ export const StaffPanel: React.FC = () => {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h1 style={{ fontSize: '2rem', fontWeight: 800 }}>Centro de Gestión</h1>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '0.4rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
+                <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 800, margin: 0 }}>Gestión</h1>
+                <div style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '400px' }}>
+                    <div style={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
+                        padding: '0.6rem 1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flex: 1
+                    }}>
                         <Search size={16} color="var(--text-muted)" />
                         <input
-                            placeholder="Buscar por email..."
-                            style={{ border: 'none', padding: 0, fontSize: '0.875rem', width: '200px', background: 'transparent' }}
+                            placeholder="Buscar email..."
+                            style={{ border: 'none', padding: 0, fontSize: '0.875rem', width: '100%', background: 'transparent' }}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -132,17 +141,25 @@ export const StaffPanel: React.FC = () => {
                 </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '2rem' }}>
+            <div style={{ display: 'flex', gap: '2rem', flexDirection: 'column' }}>
                 {/* Tabs */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '220px' }}>
-                    <button onClick={() => setActiveTab('onboarding')} className={`nav-item ${activeTab === 'onboarding' ? 'active' : ''}`}>
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    gap: '0.5rem',
+                    width: '100%',
+                    overflowX: 'auto',
+                    paddingBottom: '0.5rem',
+                    scrollbarWidth: 'none'
+                }}>
+                    <button onClick={() => setActiveTab('onboarding')} className={`nav-item ${activeTab === 'onboarding' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
                         <Users size={18} /> Onboarding
                     </button>
-                    <button onClick={() => setActiveTab('payins')} className={`nav-item ${activeTab === 'payins' ? 'active' : ''}`}>
-                        <ArrowDownLeft size={18} /> Rutas de Depósito
+                    <button onClick={() => setActiveTab('payins')} className={`nav-item ${activeTab === 'payins' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <ArrowDownLeft size={18} /> Rutas
                     </button>
-                    <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`}>
-                        <ArrowUpRight size={18} /> Orquestación (Transfers)
+                    <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <ArrowUpRight size={18} /> Transfers
                     </button>
                 </div>
 
@@ -209,18 +226,18 @@ export const StaffPanel: React.FC = () => {
                             position: 'fixed',
                             bottom: 0,
                             right: 0,
-                            width: '450px',
+                            width: 'min(100%, 450px)',
                             height: '100vh',
                             background: '#fff',
                             boxShadow: '-10px 0 30px rgba(0,0,0,0.1)',
-                            zIndex: 100,
-                            padding: '3rem',
+                            zIndex: 1100,
+                            padding: 'clamp(1.5rem, 5vw, 3rem)',
                             display: 'flex',
                             flexDirection: 'column'
                         }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                            <h2 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Revisar Ítem</h2>
+                            <h2 style={{ fontSize: 'clamp(1.2rem, 4vw, 1.5rem)', fontWeight: 800 }}>Revisar Ítem</h2>
                             <button onClick={() => setSelectedItem(null)} className="btn-secondary" style={{ padding: '0.5rem' }}>✕</button>
                         </div>
 

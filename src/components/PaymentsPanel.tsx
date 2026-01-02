@@ -200,7 +200,11 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 {selectedRoute === null ? (
                     <motion.div key="selector" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                         <h3 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>¿Qué quieres hacer?</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+                            gap: '1rem'
+                        }}>
                             <div
                                 onClick={() => setSelectedRoute('bank_to_crypto')}
                                 className="premium-card clickable-card"

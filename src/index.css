@@ -18,6 +18,11 @@
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+
+  --card-padding: 2rem;
+
+  /* Responsive Breakpoints */
+  --mobile: 768px;
 }
 
 * {
@@ -68,7 +73,7 @@ textarea:focus {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 2rem;
+  padding: var(--card-padding);
   box-shadow: var(--shadow-lg);
 }
 
@@ -145,6 +150,39 @@ textarea:focus {
   overflow-y: auto;
 }
 
+/* Mobile Responsive Adjustments */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    height: 100vh;
+    z-index: 1000;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.1);
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  .main-content {
+    padding: 1rem;
+    padding-top: 5rem;
+    /* Space for mobile header */
+  }
+
+  .premium-card {
+    --card-padding: 1.25rem;
+    border-radius: var(--radius-md);
+  }
+
+  .form-section-title {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+  }
+}
+
 /* Forms Branding */
 .form-section-title {
   font-size: 1.25rem;
@@ -181,5 +219,19 @@ textarea:focus {
 
   to {
     transform: rotate(360deg);
+  }
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-only {
+    display: flex;
+  }
+
+  .desktop-only {
+    display: none;
   }
 }
