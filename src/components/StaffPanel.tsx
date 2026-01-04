@@ -5,15 +5,19 @@ import {
     ExternalLink,
     Search,
     ArrowUpRight,
-    ArrowDownLeft
+    ArrowDownLeft,
+    Shield
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export const StaffPanel: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers'>('onboarding')
+    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'config'>('onboarding')
     const [items, setItems] = useState<any[]>([])
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [searchQuery, setSearchQuery] = useState('')
+
+    // Config states
+    const [fees, setFees] = useState<any[]>([])
 
     useEffect(() => {
         fetchData()
@@ -26,8 +30,12 @@ export const StaffPanel: React.FC = () => {
             query = supabase.from('onboarding').select('*, profiles(email)').order('updated_at', { ascending: false })
         } else if (activeTab === 'payins') {
             query = supabase.from('payin_routes').select('*, profiles(email)').order('created_at', { ascending: false })
-        } else {
+        } else if (activeTab === 'transfers') {
             query = supabase.from('bridge_transfers').select('*, profiles(email)').order('created_at', { ascending: false })
+        } else if (activeTab === 'config') {
+            const { data } = await supabase.from('fees_config').select('*')
+            if (data) setFees(data)
+            return
         }
 
         const { data } = await query
@@ -161,57 +169,87 @@ export const StaffPanel: React.FC = () => {
                     <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
                         <ArrowUpRight size={18} /> Transfers
                     </button>
+                    <button onClick={() => setActiveTab('config')} className={`nav-item ${activeTab === 'config' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        <Shield size={18} /> Configuración
+                    </button>
                 </div>
 
-                {/* List */}
+                {/* Content Area */}
                 <div style={{ flex: 1 }}>
-                    <div className="premium-card" style={{ padding: 0 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                                    <th style={{ padding: '1.25rem' }}>Usuario / Detalles</th>
-                                    <th style={{ padding: '1.25rem' }}>Estado</th>
-                                    <th style={{ padding: '1.25rem' }}>Fecha</th>
-                                    <th style={{ padding: '1.25rem', textAlign: 'right' }}>Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items
-                                    .filter(item => item.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()))
-                                    .map(item => (
-                                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                            <td style={{ padding: '1.25rem' }}>
-                                                <div style={{ fontWeight: 600 }}>{item.profiles?.email}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                    {item.transfer_kind ? `${item.transfer_kind} (${item.business_purpose})` : (item.type || 'General')}
-                                                </div>
-                                            </td>
-                                            <td style={{ padding: '1.25rem' }}>
-                                                <span style={{
-                                                    fontSize: '0.7rem',
-                                                    fontWeight: 700,
-                                                    padding: '4px 8px',
-                                                    borderRadius: '6px',
-                                                    background: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                                    color: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'var(--success)' : (item.status === 'inactive' || item.status === 'rejected' ? 'var(--error)' : 'var(--warning)'),
-                                                    textTransform: 'uppercase'
-                                                }}>
-                                                    {translateStatus(item.status)}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '1.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                                                {new Date(item.updated_at || item.created_at).toLocaleDateString()}
-                                            </td>
-                                            <td style={{ padding: '1.25rem', textAlign: 'right' }}>
-                                                <button onClick={() => setSelectedItem(item)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
-                                                    Revisar
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    {activeTab === 'config' ? (
+                        <div className="premium-card">
+                            <h3 style={{ marginBottom: '1.5rem' }}>Configuración Global de Fees</h3>
+                            <div style={{ display: 'grid', gap: '1.5rem' }}>
+                                {fees.map(f => (
+                                    <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type.replace(/_/g, ' ')}</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo: {f.fee_type}</div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                            <input
+                                                type="number"
+                                                defaultValue={f.value}
+                                                onBlur={async (e) => {
+                                                    await supabase.from('fees_config').update({ value: Number(e.target.value) }).eq('id', f.id)
+                                                }}
+                                                style={{ width: '80px', textAlign: 'right', padding: '0.5rem' }}
+                                            />
+                                            <span style={{ fontWeight: 600 }}>{f.fee_type === 'percentage' ? '%' : f.currency}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="premium-card" style={{ padding: 0 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                                        <th style={{ padding: '1.25rem' }}>Usuario / Detalles</th>
+                                        <th style={{ padding: '1.25rem' }}>Estado</th>
+                                        <th style={{ padding: '1.25rem' }}>Fecha</th>
+                                        <th style={{ padding: '1.25rem', textAlign: 'right' }}>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items
+                                        .filter(item => item.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                        .map(item => (
+                                            <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                <td style={{ padding: '1.25rem' }}>
+                                                    <div style={{ fontWeight: 600 }}>{item.profiles?.email}</div>
+                                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                        {item.transfer_kind ? `${item.transfer_kind} (${item.business_purpose})` : (item.type || 'General')}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '1.25rem' }}>
+                                                    <span style={{
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 700,
+                                                        padding: '4px 8px',
+                                                        borderRadius: '6px',
+                                                        background: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                                        color: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'var(--success)' : (item.status === 'inactive' || item.status === 'rejected' ? 'var(--error)' : 'var(--warning)'),
+                                                        textTransform: 'uppercase'
+                                                    }}>
+                                                        {translateStatus(item.status)}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '1.25rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+                                                    {new Date(item.updated_at || item.created_at).toLocaleDateString()}
+                                                </td>
+                                                <td style={{ padding: '1.25rem', textAlign: 'right' }}>
+                                                    <button onClick={() => setSelectedItem(item)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
+                                                        Revisar
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
 

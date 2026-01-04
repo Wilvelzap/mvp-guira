@@ -15,6 +15,7 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
     const [balance, setBalance] = useState(0)
     const [transactions, setTransactions] = useState<any[]>([])
     const [pendingTransfers, setPendingTransfers] = useState<any[]>([])
+    const [filter, setFilter] = useState<'all' | 'deposit' | 'payout'>('all')
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -139,9 +140,33 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
 
             {/* Transactions */}
             <div className="premium-card" style={{ padding: '2rem 1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
-                    <History size={22} color="var(--primary)" />
-                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Historial de Transacciones</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <History size={22} color="var(--primary)" />
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Historial de Transacciones</h2>
+                    </div>
+
+                    <div style={{ background: '#F1F5F9', padding: '4px', borderRadius: '10px', display: 'flex', gap: '4px' }}>
+                        {(['all', 'deposit', 'payout'] as const).map((f) => (
+                            <button
+                                key={f}
+                                onClick={() => setFilter(f)}
+                                style={{
+                                    padding: '0.4rem 1rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    background: filter === f ? '#fff' : 'transparent',
+                                    color: filter === f ? 'var(--primary)' : 'var(--text-muted)',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    boxShadow: filter === f ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
+                                }}
+                            >
+                                {f === 'all' ? 'Todas' : (f === 'deposit' ? 'Depósitos' : 'Pagos')}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {transactions.length === 0 ? (
@@ -181,25 +206,27 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
                                     </tr>
                                 ))}
                                 {/* Confirmed Ledger Entries */}
-                                {transactions.map((t) => (
-                                    <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                        <td style={{ padding: '1.25rem 0' }}>
-                                            <div style={{ fontWeight: 600 }}>{t.description}</div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {t.id.slice(0, 8)}</div>
-                                        </td>
-                                        <td style={{ padding: '1.25rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                                            {new Date(t.created_at).toLocaleDateString()}
-                                        </td>
-                                        <td style={{
-                                            padding: '1.25rem 0',
-                                            textAlign: 'right',
-                                            fontWeight: 700,
-                                            color: t.type === 'deposit' ? 'var(--success)' : 'var(--text-main)'
-                                        }}>
-                                            {t.type === 'deposit' ? '+' : '-'}${Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {transactions
+                                    .filter(t => filter === 'all' || t.type === filter)
+                                    .map((t) => (
+                                        <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                            <td style={{ padding: '1.25rem 0' }}>
+                                                <div style={{ fontWeight: 600 }}>{t.description}</div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {t.id.slice(0, 8)}</div>
+                                            </td>
+                                            <td style={{ padding: '1.25rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                                                {new Date(t.created_at).toLocaleDateString()}
+                                            </td>
+                                            <td style={{
+                                                padding: '1.25rem 0',
+                                                textAlign: 'right',
+                                                fontWeight: 700,
+                                                color: t.type === 'deposit' ? 'var(--success)' : 'var(--text-main)'
+                                            }}>
+                                                {t.type === 'deposit' ? '+' : '-'}${Number(t.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    ))}
                             </tbody>
                         </table>
                     </div>
