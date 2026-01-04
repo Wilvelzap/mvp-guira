@@ -405,6 +405,20 @@ export const StaffPanel: React.FC = () => {
                                             <span style={{ fontWeight: 800, fontSize: '1.25rem' }}>${selectedItem.amount.toLocaleString()} {selectedItem.currency}</span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Fee Guira:</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--error)' }}>- ${selectedItem.fee_amount?.toLocaleString()}</span>
+                                        </div>
+                                        {selectedItem.exchange_rate && selectedItem.exchange_rate !== 1 && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>T. Cambio:</span>
+                                                <span style={{ fontWeight: 600 }}>{selectedItem.exchange_rate}</span>
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Monto Neto:</span>
+                                            <span style={{ fontWeight: 800, color: 'var(--success)' }}>${selectedItem.net_amount?.toLocaleString()}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo:</span>
                                             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedItem.transfer_kind}</span>
                                         </div>

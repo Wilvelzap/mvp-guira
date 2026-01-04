@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getFeeConfig, calculateFee } from './fees'
 
 export type TransferKind = 'wallet_to_wallet' | 'wallet_to_external_crypto' | 'wallet_to_external_bank' | 'virtual_account_to_wallet'
 export type BusinessPurpose = 'supplier_payment' | 'client_withdrawal' | 'funding' | 'liquidation' | 'internal'
@@ -13,6 +14,7 @@ export interface CreateTransferParams {
     destinationId?: string
     destinationType?: 'wallet' | 'external_account' | 'external_crypto_address'
     network?: string
+    exchangeRate?: number
 }
 
 /**
@@ -72,7 +74,19 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
         }
     }
 
-    // 4. Create Transfer Record (Optimistic state: 'created' or 'pending')
+    // 4. Calculate Fees
+    let feeAmount = 0
+    if (purpose === 'supplier_payment' || purpose === 'client_withdrawal') {
+        const feeConfig = await getFeeConfig('supplier_payment')
+        if (feeConfig) {
+            feeAmount = calculateFee(amount, feeConfig)
+        }
+    }
+
+    const netAmount = amount - feeAmount
+    const exchangeRate = params.exchangeRate || 1
+
+    // 5. Create Transfer Record (Optimistic state: 'created' or 'pending')
     const { data: transfer, error: transferErr } = await supabase
         .from('bridge_transfers')
         .insert({
@@ -85,6 +99,9 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
             status: 'pending', // Bridge usually starts as pending/created
             destination_type: params.destinationType,
             destination_id: params.destinationId,
+            fee_amount: feeAmount,
+            net_amount: netAmount,
+            exchange_rate: exchangeRate,
             metadata: {
                 system: 'guira-bridge-v1',
                 network: params.network,

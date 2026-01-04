@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CreditCard, Globe, Shield } from 'lucide-react'
 import type { BusinessPurpose } from '../lib/bridge'
 import { createBridgeTransfer } from '../lib/bridge'
+import { getFeeConfig, calculateFee } from '../lib/fees'
+import { generatePaymentPDF } from '../lib/pdf'
 
 export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => void }> = ({ initialRoute, onRouteClear }) => {
     const { user } = useAuth()
@@ -28,6 +30,17 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const [clientCryptoAddress, setClientCryptoAddress] = useState('')
     const [clientStablecoin, setClientStablecoin] = useState('USDC')
     const [error, setError] = useState<string | null>(null)
+    const [feeConfig, setFeeConfig] = useState<any>(null)
+
+    // Supplier Agenda states
+    const [suppliers, setSuppliers] = useState<any[]>([])
+    const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
+    const [isAddingSupplier, setIsAddingSupplier] = useState(false)
+    const [newSupplier, setNewSupplier] = useState({ name: '', country: 'US', payment_method: 'bank', bank_details: {}, crypto_details: {} })
+
+    // Bolivia Specific
+    const [amountBs, setAmountBs] = useState('')
+    const exchangeRateBs = 10.5 // Mock exchange rate
 
     // Handle deep links from dashboard
     useEffect(() => {
@@ -63,18 +76,35 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         fetchPaymentsData()
     }, [user])
 
+    const calculatedFeeValue = feeConfig && amount ? calculateFee(Number(amount), feeConfig) : 0
+    const netAmountValue = amount ? Number(amount) - calculatedFeeValue : 0
+
     const fetchPaymentsData = async () => {
         if (!user) return
         setLoading(true)
 
-        const [routes, transfers] = await Promise.all([
+        const [routes, transfers, suppliersRes, feeRes] = await Promise.all([
             supabase.from('payin_routes').select('*').eq('user_id', user.id),
-            supabase.from('bridge_transfers').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+            supabase.from('bridge_transfers').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+            supabase.from('suppliers').select('*').eq('user_id', user.id),
+            getFeeConfig('supplier_payment')
         ])
 
         if (routes.data) setPayinRoutes(routes.data)
         if (transfers.data) setBridgeTransfers(transfers.data)
+        if (suppliersRes.data) setSuppliers(suppliersRes.data)
+        if (feeRes) setFeeConfig(feeRes)
         setLoading(false)
+    }
+
+    const handleAddSupplier = async () => {
+        if (!user) return
+        const { error } = await supabase.from('suppliers').insert([{ ...newSupplier, user_id: user.id }])
+        if (error) setError(error.message)
+        else {
+            setIsAddingSupplier(false)
+            fetchPaymentsData()
+        }
     }
 
     const resetFlow = () => {
@@ -103,8 +133,9 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                     purpose: businessPurpose,
                     idempotencyKey,
                     destinationId,
-                    destinationType: 'external_account',
-                    network: sendNetwork // Current location of funds
+                    destinationType: selectedSupplier?.country === 'Bolivia' ? 'external_crypto_address' : 'external_account',
+                    network: sendNetwork || 'ethereum',
+                    exchangeRate: selectedSupplier?.country === 'Bolivia' ? exchangeRateBs : 1
                 })
                 if (transferErr) throw transferErr
             } else if (selectedRoute === 'bank_to_crypto' || selectedRoute === 'crypto_to_crypto') {
@@ -394,64 +425,107 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                 </>
                             )}
 
-                            {/* ROUTE 3: CRYPTO TO BANK */}
+                            {/* ROUTE 3: CRYPTO TO BANK (Refined for Suppliers) */}
                             {selectedRoute === 'crypto_to_bank' && (
                                 <>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>¿Desde qué red enviarás el dinero?</label>
-                                            <select value={sendNetwork} onChange={e => setSendNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
-                                                <option value="base">Base 🔵</option>
-                                                <option value="solana">Solana ◎</option>
-                                                <option value="polygon">Polygon 🟣</option>
-                                                <option value="arbitrum">Arbitrum 💙</option>
-                                                <option value="ethereum">Ethereum ⟠</option>
+                                    <div className="input-group">
+                                        <label style={{ fontWeight: 700 }}>Agenda de Proveedores</label>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            <select
+                                                style={{ flex: 1, padding: '0.75rem' }}
+                                                value={selectedSupplier?.id || ''}
+                                                onChange={(e) => {
+                                                    const s = suppliers.find(sup => sup.id === e.target.value)
+                                                    setSelectedSupplier(s)
+                                                    if (s) {
+                                                        setDestinationId(s.payment_method === 'bank' ? s.bank_details?.account : s.crypto_details?.address)
+                                                    }
+                                                }}
+                                            >
+                                                <option value="">-- Seleccionar Proveedor --</option>
+                                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.country})</option>)}
                                             </select>
-                                        </div>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Moneda que tienes actualmente</label>
-                                            <select value={currency} onChange={e => setCurrency(e.target.value)} style={{ padding: '0.75rem' }}>
-                                                {networkAssets[sendNetwork]?.map(asset => (
-                                                    <option key={asset} value={asset}>{asset}</option>
-                                                ))}
-                                            </select>
+                                            <button onClick={() => setIsAddingSupplier(true)} className="btn-secondary" style={{ padding: '0.5rem' }}>+</button>
                                         </div>
                                     </div>
 
+                                    {isAddingSupplier ? (
+                                        <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                            <h5 style={{ marginTop: 0 }}>Registrar Nuevo Proveedor</h5>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                <input placeholder="Nombre / Empresa" onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
+                                                <select onChange={e => setNewSupplier({ ...newSupplier, country: e.target.value })}>
+                                                    <option value="US">Estados Unidos</option>
+                                                    <option value="Bolivia">Bolivia</option>
+                                                    <option value="Other">Resto del Mundo</option>
+                                                </select>
+                                                <button onClick={handleAddSupplier} className="btn-primary" style={{ fontSize: '0.8rem' }}>Guardar Beneficiario</button>
+                                                <button onClick={() => setIsAddingSupplier(false)} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Cancelar</button>
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    {selectedSupplier?.country === 'Bolivia' && (
+                                        <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--success)' }}>
+                                            <label style={{ fontWeight: 700, color: 'var(--success)', display: 'block', marginBottom: '0.5rem' }}>Calculadora Bolivia (Bs → USDT)</label>
+                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                <input
+                                                    type="number"
+                                                    placeholder="Monto en Bs"
+                                                    value={amountBs}
+                                                    onChange={e => {
+                                                        setAmountBs(e.target.value)
+                                                        setAmount((Number(e.target.value) / exchangeRateBs).toFixed(2))
+                                                    }}
+                                                    style={{ flex: 1 }}
+                                                />
+                                                <span>=</span>
+                                                <div style={{ fontWeight: 700, fontSize: '1.2rem' }}>{amount} USDT</div>
+                                            </div>
+                                            <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.8 }}>T.C. Aplicado: 1 USDT = {exchangeRateBs} Bs</p>
+                                        </div>
+                                    )}
+
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                                         <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Monto a enviar</label>
+                                            <label style={{ fontWeight: 700 }}>Monto a enviar (USDC/USDT)</label>
                                             <input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} style={{ padding: '0.75rem' }} />
                                         </div>
                                         <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Método bancario</label>
+                                            <label style={{ fontWeight: 700 }}>Método de Salida</label>
                                             <select value={fiatMethod} onChange={e => setFiatMethod(e.target.value as any)} style={{ padding: '0.75rem' }}>
-                                                <option value="ach">ACH (Económico, 1-3 días)</option>
-                                                <option value="wire">Wire (Rápido, mismo día)</option>
+                                                <option value="ach">ACH (EE.UU.)</option>
+                                                <option value="wire">Wire (Internacional)</option>
+                                                <option value="crypto" disabled={selectedSupplier?.country !== 'Bolivia'}>Crypto / USDT</option>
                                             </select>
                                         </div>
                                     </div>
 
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>Motivo del pago</label>
-                                        <select value={businessPurpose} onChange={e => setBusinessPurpose(e.target.value as BusinessPurpose)} style={{ padding: '0.75rem' }}>
-                                            <option value="supplier_payment">Pago a Proveedor</option>
-                                            <option value="client_withdrawal">Retiro propio</option>
-                                            <option value="funding">Fondeo de cuenta</option>
-                                        </select>
-                                    </div>
+                                    {amount && feeConfig && (
+                                        <div style={{ background: '#F1F5F9', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span>Monto enviado:</span>
+                                                <span>{amount} {currency}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--error)' }}>
+                                                <span>Fee Guira ({feeConfig.value}{feeConfig.fee_type === 'percentage' ? '%' : ' ' + feeConfig.currency}):</span>
+                                                <span>- {calculatedFeeValue.toFixed(2)} {currency}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #CBD5E1', paddingTop: '0.5rem' }}>
+                                                <span>Monto neto que recibe:</span>
+                                                <span>{netAmountValue.toFixed(2)} {currency}</span>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>ID de cuenta bancaria destino</label>
+                                        <label style={{ fontWeight: 700 }}>ID / Wallet de Destino</label>
                                         <input
-                                            placeholder="Ingresa el ID de cuenta externa de Bridge..."
+                                            placeholder="Cuenta bancaria o Address..."
                                             value={destinationId}
                                             onChange={e => setDestinationId(e.target.value)}
                                             style={{ padding: '0.75rem' }}
                                         />
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                                            ACH y Wire solo están disponibles para cuentas bancarias compatibles y verificadas.
-                                        </p>
                                     </div>
                                 </>
                             )}
@@ -570,8 +644,32 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                 {trans.status.toUpperCase()}
                                                             </span>
                                                         </td>
-                                                        <td style={{ padding: '1.25rem', textAlign: 'right', fontWeight: 700 }}>
-                                                            {trans.amount.toLocaleString()} {trans.currency}
+                                                        <td style={{ padding: '1.25rem' }}>
+                                                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                                                {trans.business_purpose === 'supplier_payment' && (
+                                                                    <button
+                                                                        onClick={() => generatePaymentPDF({
+                                                                            id: trans.id,
+                                                                            userName: user.email || 'Usuario',
+                                                                            supplierName: trans.metadata?.supplier?.name || 'Proveedor Destino',
+                                                                            date: trans.created_at,
+                                                                            amount: trans.amount,
+                                                                            currency: trans.currency,
+                                                                            fee: trans.fee_amount || 0,
+                                                                            netAmount: trans.net_amount || trans.amount,
+                                                                            exchangeRate: trans.exchange_rate,
+                                                                            type: trans.transfer_kind
+                                                                        })}
+                                                                        className="btn-secondary"
+                                                                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem' }}
+                                                                    >
+                                                                        📄 PDF
+                                                                    </button>
+                                                                )}
+                                                                <span style={{ fontWeight: 700 }}>
+                                                                    {trans.amount.toLocaleString()} {trans.currency}
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
