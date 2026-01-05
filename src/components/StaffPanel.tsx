@@ -7,9 +7,14 @@ import {
     ArrowDownLeft,
     Shield,
     Box,
-    FileDown
+    FileDown,
+    Plus,
+    X,
+    AlertTriangle,
+    Save
 } from 'lucide-react'
 import { generatePaymentPDF } from '../lib/pdf'
+import { registerAuditLog } from '../lib/audit'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export const StaffPanel: React.FC = () => {
@@ -29,7 +34,26 @@ export const StaffPanel: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<string>('all')
     const [railFilter, setRailFilter] = useState<string>('all')
 
+    // Audit and Control States
+    const [userRole, setUserRole] = useState<'staff' | 'admin' | null>(null)
+    const [showReasonModal, setShowReasonModal] = useState(false)
+    const [modificationReason, setModificationReason] = useState('')
+    const [pendingAction, setPendingAction] = useState<any>(null)
+    const [isCreatingManual, setIsCreatingManual] = useState<boolean>(false)
+    const [isEditingMaterial, setIsEditingMaterial] = useState<boolean>(false)
+
+    // Form for manual creation/edit
+    const [formContent, setFormContent] = useState<any>({})
+
     useEffect(() => {
+        const checkRole = async () => {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+                const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+                if (profile) setUserRole(profile.role)
+            }
+        }
+        checkRole()
         fetchData()
     }, [activeTab])
 
@@ -54,11 +78,36 @@ export const StaffPanel: React.FC = () => {
         if (data) setItems(data)
     }
 
-    const handleUpdateStatus = async (id: string, table: string, status: string, additionalData: any = {}) => {
+    const handleUpdateStatus = async (id: string, table: string, status: string, additionalData: any = {}, reason: string = '') => {
         const item = items.find(i => i.id === id)
         if (!item) return
 
+        // Validación de retroceso (Admin solo)
+        if (status === 'created' && item.status !== 'created' && ['deposit_received', 'processing', 'completed'].includes(item.status)) {
+            if (userRole !== 'admin') {
+                alert('Solo los administradores pueden retroceder estados de órdenes fondeadas.')
+                return
+            }
+        }
+
         try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('No autenticado')
+
+            // Registrar Auditoría antes del cambio (para tener los valores previos)
+            if (reason) {
+                await registerAuditLog({
+                    performed_by: user.id,
+                    role: userRole as any,
+                    action: 'change_status',
+                    table_name: table,
+                    record_id: id,
+                    previous_values: { status: item.status },
+                    new_values: { status, ...additionalData },
+                    reason
+                })
+            }
+
             const { error } = await supabase
                 .from(table)
                 .update({ status, ...additionalData })
@@ -94,9 +143,84 @@ export const StaffPanel: React.FC = () => {
 
             fetchData()
             setSelectedItem(null)
+            setShowReasonModal(false)
+            setModificationReason('')
+            setPendingAction(null)
         } catch (err: any) {
             console.error('Error updating status:', err)
             alert('Error al actualizar: ' + err.message)
+        }
+    }
+
+    const handleSaveManual = async () => {
+        if (!userRole || userRole !== 'admin') {
+            alert('Solo los administradores pueden realizar esta acción.')
+            return
+        }
+
+        if (!modificationReason && !isCreatingManual) {
+            alert('El motivo de la modificación es obligatorio.')
+            return
+        }
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('No autenticado')
+
+            const table = activeTab === 'orders' ? 'payment_orders' : (activeTab === 'payins' ? 'payin_routes' : 'bridge_transfers')
+            let res: any
+
+            if (isCreatingManual) {
+                // Agregar metadatos de creación manual
+                const payload = {
+                    ...formContent,
+                    user_id: formContent.user_id || user.id, // Fallback si no se seleccionó cliente
+                    metadata: {
+                        ...formContent.metadata,
+                        created_by: 'admin',
+                        creation_type: 'manual',
+                        requires_review: true
+                    }
+                }
+                res = await supabase.from(table).insert(payload).select().single()
+                if (res.error) throw res.error
+
+                await registerAuditLog({
+                    performed_by: user.id,
+                    role: 'admin',
+                    action: 'create',
+                    table_name: table,
+                    record_id: res.data.id,
+                    new_values: payload,
+                    reason: modificationReason || 'Creación manual de registro operativo'
+                })
+            } else {
+                // Edición Material de Admin
+                const item = items.find(i => i.id === selectedItem.id)
+                res = await supabase.from(table).update(formContent).eq('id', item.id)
+                if (res.error) throw res.error
+
+                await registerAuditLog({
+                    performed_by: user.id,
+                    role: 'admin',
+                    action: 'update',
+                    table_name: table,
+                    record_id: item.id,
+                    previous_values: item,
+                    new_values: formContent,
+                    reason: modificationReason
+                })
+            }
+
+            fetchData()
+            setSelectedItem(null)
+            setIsCreatingManual(false)
+            setIsEditingMaterial(false)
+            setFormContent({})
+            setModificationReason('')
+            setShowReasonModal(false)
+        } catch (err: any) {
+            alert('Error al guardar: ' + err.message)
         }
     }
 
@@ -182,6 +306,19 @@ export const StaffPanel: React.FC = () => {
                             ))}
                         </select>
                     )}
+
+                    {userRole === 'admin' && activeTab !== 'config' && (
+                        <button
+                            onClick={() => {
+                                setIsCreatingManual(true)
+                                setFormContent({})
+                            }}
+                            className="btn-primary"
+                            style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        >
+                            <Plus size={18} /> Nuevo
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -213,7 +350,82 @@ export const StaffPanel: React.FC = () => {
                 </div>
 
                 <div style={{ flex: 1 }}>
-                    {activeTab === 'config' ? (
+                    {isCreatingManual ? (
+                        <div className="premium-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                                <h3>+ Nueva {activeTab === 'orders' ? 'Órden' : (activeTab === 'payins' ? 'Ruta' : 'Transferencia')} (Manual)</h3>
+                                <button onClick={() => setIsCreatingManual(false)} className="btn-secondary"><X size={18} /></button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                {activeTab === 'orders' && (
+                                    <>
+                                        <div className="input-group">
+                                            <label>Cliente (Email o ID)</label>
+                                            <input placeholder="Email del cliente..." onChange={e => setFormContent({ ...formContent, user_email: e.target.value })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Tipo de Orden</label>
+                                            <select onChange={e => setFormContent({ ...formContent, order_type: e.target.value })}>
+                                                <option value="">Seleccione...</option>
+                                                <option value="BO_TO_WORLD">Pagar al Exterior</option>
+                                                <option value="WORLD_TO_BO">Recibir en Bolivia</option>
+                                                <option value="US_TO_WALLET">Recibir desde EE.UU.</option>
+                                                <option value="CRYPTO_TO_CRYPTO">Enviar Cripto</option>
+                                            </select>
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Riel</label>
+                                            <select onChange={e => setFormContent({ ...formContent, processing_rail: e.target.value })}>
+                                                <option value="">Seleccione...</option>
+                                                <option value="PSAV">PSAV (Bolivia)</option>
+                                                <option value="SWIFT">SWIFT</option>
+                                                <option value="ACH">ACH (EE.UU.)</option>
+                                                <option value="DIGITAL_NETWORK">Cripto / Digital</option>
+                                            </select>
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Monto Origen</label>
+                                            <input type="number" placeholder="0.00" onChange={e => setFormContent({ ...formContent, amount_origin: Number(e.target.value) })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Moneda Origen</label>
+                                            <input placeholder="Bs, USD, USDT..." onChange={e => setFormContent({ ...formContent, origin_currency: e.target.value })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Tipo de Ruta</label>
+                                            <select onChange={e => setFormContent({ ...formContent, type: e.target.value })}>
+                                                <option value="">Seleccione...</option>
+                                                <option value="ACH_to_crypto">ACH a Cripto</option>
+                                                <option value="crypto_to_crypto">Cripto a Cripto</option>
+                                                <option value="incoming_transfer">Transferencia Entrante</option>
+                                            </select>
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Banco</label>
+                                            <input placeholder="Nombre del Banco" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, banco: e.target.value } })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Cuenta</label>
+                                            <input placeholder="Número de cuenta" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, cuenta: e.target.value } })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Routing / ABA</label>
+                                            <input placeholder="Routing Number" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, routing: e.target.value } })} />
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Red / Address (Cripto)</label>
+                                            <input placeholder="Red y/o Dirección" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, network_address: e.target.value } })} />
+                                        </div>
+                                    </>
+                                )}
+                                {/* Otros formularios para Transfers se pueden expandir aquí */}
+                            </div>
+                            <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem' }}>
+                                <button onClick={() => setIsCreatingManual(false)} className="btn-secondary" style={{ flex: 1 }}>Cancelar</button>
+                                <button onClick={handleSaveManual} className="btn-primary" style={{ flex: 1 }}>Crear Registro Documental</button>
+                            </div>
+                        </div>
+                    ) : activeTab === 'config' ? (
                         <div className="premium-card">
                             <h3 style={{ marginBottom: '1.5rem' }}>Configuración Global de Fees</h3>
                             <div style={{ display: 'grid', gap: '1.5rem' }}>
@@ -260,7 +472,13 @@ export const StaffPanel: React.FC = () => {
                                         .map(item => (
                                             <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '1.25rem' }}>
-                                                    <div style={{ fontWeight: 600 }}>{item.profiles?.email}</div>
+                                                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600 }}>{item.profiles?.email || 'Sistema'}</p>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(item.created_at).toLocaleDateString()}</p>
+                                                        {item.metadata?.creation_type === 'manual' && (
+                                                            <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>MANUAL</span>
+                                                        )}
+                                                    </div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                         {activeTab === 'orders'
                                                             ? `${translateOrderType(item.order_type)} [${item.processing_rail.split('_')[0].toUpperCase()}]`
@@ -404,15 +622,34 @@ export const StaffPanel: React.FC = () => {
                                                     <input placeholder="Routing" defaultValue={selectedItem.instructions?.routing} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, routing: e.target.value }} />
                                                 </>
                                             )}
-                                            {(selectedItem.type === 'crypto_to_crypto' || selectedItem.type === 'incoming_transfer') && (
+                                            {(selectedItem.type === 'crypto_to_crypto' || selectedItem.type === 'incoming_transfer' || !['ACH_to_crypto'].includes(selectedItem.type)) && (
                                                 <>
-                                                    <input placeholder="Red" defaultValue={selectedItem.instructions?.network} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, network: e.target.value }} />
-                                                    <input placeholder="Address" defaultValue={selectedItem.instructions?.address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, address: e.target.value }} />
+                                                    <input placeholder="Red / Instrucci\u00f3n" defaultValue={selectedItem.instructions?.network || selectedItem.instructions?.network_address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, network_address: e.target.value }} />
+                                                    <input placeholder="Address / Info Adicional" defaultValue={selectedItem.instructions?.address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, address: e.target.value }} />
                                                 </>
                                             )}
                                         </div>
                                     </div>
-                                    <button onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })} className="btn-primary">Activar Ruta</button>
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                                        <button
+                                            onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })}
+                                            className="btn-primary"
+                                            style={{ flex: 1 }}
+                                        >
+                                            Activar con estos Datos
+                                        </button>
+                                        {userRole === 'admin' && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditingMaterial(true)
+                                                    setFormContent(selectedItem)
+                                                }}
+                                                className="btn-secondary"
+                                            >
+                                                Editar
+                                            </button>
+                                        )}
+                                    </div>
                                 </>
                             )}
 
@@ -445,6 +682,79 @@ export const StaffPanel: React.FC = () => {
                             {activeTab === 'orders' && (
                                 <>
                                     <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                            <h4 style={{ margin: 0 }}>Datos de la Órden</h4>
+                                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                                {selectedItem.metadata?.creation_type === 'manual' && (
+                                                    <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>MANUAL</span>
+                                                )}
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {selectedItem.id.split('-')[0]}</span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Tipo de Orden</label>
+                                                <select
+                                                    disabled={!isEditingMaterial || (['deposit_received', 'processing', 'completed'].includes(selectedItem.status) && userRole !== 'admin')}
+                                                    value={formContent.order_type || selectedItem.order_type}
+                                                    onChange={e => setFormContent({ ...formContent, order_type: e.target.value })}
+                                                >
+                                                    <option value="BO_TO_WORLD">Pagar al Exterior</option>
+                                                    <option value="WORLD_TO_BO">Recibir en Bolivia</option>
+                                                    <option value="US_TO_WALLET">Recibir desde EE.UU.</option>
+                                                    <option value="CRYPTO_TO_CRYPTO">Enviar Cripto</option>
+                                                </select>
+                                            </div>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Riel</label>
+                                                <select
+                                                    disabled={!isEditingMaterial || (['deposit_received', 'processing', 'completed'].includes(selectedItem.status) && userRole !== 'admin')}
+                                                    value={formContent.processing_rail || selectedItem.processing_rail}
+                                                    onChange={e => setFormContent({ ...formContent, processing_rail: e.target.value })}
+                                                >
+                                                    <option value="PSAV">PSAV</option>
+                                                    <option value="SWIFT">SWIFT</option>
+                                                    <option value="ACH">ACH</option>
+                                                    <option value="DIGITAL_NETWORK">Digital</option>
+                                                </select>
+                                            </div>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Monto Origen</label>
+                                                <input
+                                                    type="number"
+                                                    disabled={!isEditingMaterial || (['deposit_received', 'processing', 'completed'].includes(selectedItem.status) && userRole !== 'admin')}
+                                                    defaultValue={selectedItem.amount_origin}
+                                                    onChange={e => setFormContent({ ...formContent, amount_origin: Number(e.target.value) })}
+                                                />
+                                            </div>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Moneda</label>
+                                                <input
+                                                    disabled={!isEditingMaterial || (['deposit_received', 'processing', 'completed'].includes(selectedItem.status) && userRole !== 'admin')}
+                                                    defaultValue={selectedItem.origin_currency}
+                                                    onChange={e => setFormContent({ ...formContent, origin_currency: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {isEditingMaterial && (
+                                            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+                                                <button onClick={() => setIsEditingMaterial(false)} className="btn-secondary" style={{ flex: 1 }}>Cancelar</button>
+                                                <button
+                                                    onClick={() => {
+                                                        setPendingAction({ type: 'edit' })
+                                                        setShowReasonModal(true)
+                                                    }}
+                                                    className="btn-primary"
+                                                    style={{ flex: 1 }}
+                                                >
+                                                    Guardar Cambios
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo:</span>
                                             <span style={{ fontWeight: 700 }}>{translateOrderType(selectedItem.order_type)}</span>
@@ -475,6 +785,19 @@ export const StaffPanel: React.FC = () => {
                                     )}
 
                                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                                        {userRole === 'admin' && (
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditingMaterial(true)
+                                                    setFormContent(selectedItem)
+                                                }}
+                                                className="btn-secondary"
+                                                style={{ width: '100%', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                                            >
+                                                <Save size={14} /> Corrección Administrativa
+                                            </button>
+                                        )}
+
                                         {selectedItem.status === 'created' || selectedItem.status === 'waiting_deposit' ? (
                                             <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'deposit_received')} className="btn-primary" style={{ width: '100%' }}>Confirmar Depósito</button>
                                         ) : selectedItem.status === 'deposit_received' ? (
@@ -566,7 +889,8 @@ export const StaffPanel: React.FC = () => {
                                                         type: translateOrderType(selectedItem.order_type),
                                                         rail: selectedItem.processing_rail,
                                                         reference: selectedItem.metadata?.reference,
-                                                        paymentReason: selectedItem.metadata?.payment_reason
+                                                        paymentReason: selectedItem.metadata?.payment_reason,
+                                                        isManual: selectedItem.metadata?.creation_type === 'manual'
                                                     })}
                                                     className="btn-secondary"
                                                     style={{ width: '100%', marginTop: '1rem', gap: '0.5rem' }}
@@ -577,7 +901,10 @@ export const StaffPanel: React.FC = () => {
                                         )}
 
                                         {selectedItem.status !== 'completed' && (
-                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'failed')} className="btn-secondary" style={{ width: '100%', marginTop: '1rem', color: 'var(--error)' }}>Anular / Fallar</button>
+                                            <button onClick={() => {
+                                                setPendingAction({ id: selectedItem.id, table: 'payment_orders', status: 'failed', type: 'status' })
+                                                setShowReasonModal(true)
+                                            }} className="btn-secondary" style={{ width: '100%', marginTop: '1rem', color: 'var(--error)' }}>Marcar como Fallida / Anular</button>
                                         )}
                                     </div>
                                 </>
@@ -586,6 +913,52 @@ export const StaffPanel: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {showReasonModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ background: '#fff', padding: '2rem', borderRadius: '16px', maxWidth: '450px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', color: 'var(--primary)' }}>
+                            <AlertTriangle size={24} />
+                            <h3 style={{ margin: 0 }}>Motivo de la Modificación</h3>
+                        </div>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                            De acuerdo a las políticas de Guira, toda modificación manual debe ser debidamente justificada para fines de auditoría.
+                        </p>
+                        <textarea
+                            placeholder="Describa el motivo del cambio (mín. 5 caracteres)..."
+                            value={modificationReason}
+                            onChange={(e) => setModificationReason(e.target.value)}
+                            style={{ width: '100%', minHeight: '100px', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '1.5rem', fontSize: '1rem' }}
+                        />
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button
+                                onClick={() => {
+                                    setShowReasonModal(false)
+                                    setModificationReason('')
+                                    setPendingAction(null)
+                                }}
+                                className="btn-secondary"
+                                style={{ flex: 1 }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (pendingAction.type === 'status') {
+                                        handleUpdateStatus(pendingAction.id, pendingAction.table, pendingAction.status, pendingAction.additionalData, modificationReason)
+                                    } else {
+                                        handleSaveManual()
+                                    }
+                                }}
+                                disabled={modificationReason.trim().length < 5}
+                                className="btn-primary"
+                                style={{ flex: 1 }}
+                            >
+                                Confirmar Cambio
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     )
 }

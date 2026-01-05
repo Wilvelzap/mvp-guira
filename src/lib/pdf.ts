@@ -14,6 +14,7 @@ export interface PaymentDocData {
     rail?: string
     reference?: string
     paymentReason?: string
+    isManual?: boolean
 }
 
 export function generatePaymentPDF(data: PaymentDocData) {
@@ -27,6 +28,12 @@ export function generatePaymentPDF(data: PaymentDocData) {
     doc.setFontSize(10)
     doc.setTextColor(100)
     doc.text('Documento de Respaldo de Operación', 20, 28)
+
+    if (data.isManual) {
+        doc.setFontSize(8)
+        doc.setTextColor(153, 27, 27) // Red-800
+        doc.text('ORDEN CREADA MANUALMENTE', 150, 28)
+    }
 
     // Divider
     doc.setDrawColor(200)
