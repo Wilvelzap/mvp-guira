@@ -8,6 +8,7 @@ import { generatePaymentPDF } from '../lib/pdf'
 import { createPaymentOrder, uploadOrderEvidence } from '../lib/orders'
 import type { ProcessingRail, OrderType } from '../lib/orders'
 
+// Triggering fresh build on Vercel to resolve synchronization issues.
 type PaymentRoute = 'bolivia_to_exterior' | 'us_to_wallet' | 'crypto_to_crypto' | 'us_to_bolivia' | 'bank_to_crypto' | 'crypto_to_bank'
 
 export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => void }> = ({ initialRoute, onRouteClear }) => {
