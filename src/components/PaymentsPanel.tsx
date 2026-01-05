@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CreditCard, Globe } from 'lucide-react'
+import { CreditCard, Globe, Upload, Clock } from 'lucide-react'
 import { getFeeConfig, calculateFee } from '../lib/fees'
 import { generatePaymentPDF } from '../lib/pdf'
 import { createPaymentOrder, uploadOrderEvidence } from '../lib/orders'
 import type { ProcessingRail, OrderType } from '../lib/orders'
-import { Upload, Clock } from 'lucide-react'
 
 type PaymentRoute = 'bolivia_to_exterior' | 'us_to_wallet' | 'crypto_to_crypto' | 'us_to_bolivia' | 'bank_to_crypto' | 'crypto_to_bank'
 
