@@ -44,6 +44,8 @@ export const StaffPanel: React.FC = () => {
 
     // Form for manual creation/edit
     const [formContent, setFormContent] = useState<any>({})
+    const [allProfiles, setAllProfiles] = useState<any[]>([])
+    const [userSearchTerm, setUserSearchTerm] = useState('')
 
     useEffect(() => {
         const checkRole = async () => {
@@ -53,7 +55,12 @@ export const StaffPanel: React.FC = () => {
                 if (profile) setUserRole(profile.role)
             }
         }
+        const fetchProfiles = async () => {
+            const { data } = await supabase.from('profiles').select('id, email, full_name')
+            if (data) setAllProfiles(data)
+        }
         checkRole()
+        fetchProfiles()
         fetchData()
     }, [activeTab])
 
@@ -176,12 +183,31 @@ export const StaffPanel: React.FC = () => {
                     ...formContent,
                     user_id: formContent.user_id || user.id, // Fallback si no se seleccionó cliente
                     metadata: {
-                        ...formContent.metadata,
+                        ...(formContent.metadata || {}),
                         created_by: 'admin',
                         creation_type: 'manual',
                         requires_review: true
                     }
                 }
+
+                // Fix para bridge_transfers (campos obligatorios y saneamiento)
+                if (table === 'bridge_transfers') {
+                    payload.idempotency_key = crypto.randomUUID()
+                    payload.transfer_kind = payload.transfer_kind || 'payout'
+                    payload.business_purpose = payload.business_purpose || 'Administrative payout'
+                    payload.amount = payload.amount || formContent.amount_origin || 0
+                    payload.currency = payload.currency || formContent.origin_currency || 'USD'
+
+                    // Sanear campos que pertenecen a otras tablas y que podrían estar en formContent
+                    const keysToDelete = ['amount_origin', 'origin_currency', 'destination_currency', 'order_type', 'processing_rail', 'user_email', 'type'];
+                    keysToDelete.forEach(k => delete payload[k]);
+                }
+
+                if (table === 'payment_orders') {
+                    delete payload.user_email;
+                    delete payload.type; // Pertenece a payin_routes
+                }
+
                 res = await supabase.from(table).insert(payload).select().single()
                 if (res.error) throw res.error
 
@@ -192,12 +218,17 @@ export const StaffPanel: React.FC = () => {
                     table_name: table,
                     record_id: res.data.id,
                     new_values: payload,
-                    reason: modificationReason || 'Creación manual de registro operativo'
+                    reason: modificationReason || 'Creaci\u00f3n manual de registro operativo'
                 })
             } else {
-                // Edición Material de Admin
+                // Edici\u00f3n Material de Admin
                 const item = items.find(i => i.id === selectedItem.id)
-                res = await supabase.from(table).update(formContent).eq('id', item.id)
+
+                // Asegurar que formContent tenga lo necesario
+                const updatePayload = { ...formContent }
+                delete updatePayload.profiles // Evitar error de columna inexistente
+
+                res = await supabase.from(table).update(updatePayload).eq('id', item.id)
                 if (res.error) throw res.error
 
                 await registerAuditLog({
@@ -207,7 +238,7 @@ export const StaffPanel: React.FC = () => {
                     table_name: table,
                     record_id: item.id,
                     previous_values: item,
-                    new_values: formContent,
+                    new_values: updatePayload,
                     reason: modificationReason
                 })
             }
@@ -359,9 +390,31 @@ export const StaffPanel: React.FC = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                                 {activeTab === 'orders' && (
                                     <>
-                                        <div className="input-group">
-                                            <label>Cliente (Email o ID)</label>
-                                            <input placeholder="Email del cliente..." onChange={e => setFormContent({ ...formContent, user_email: e.target.value })} />
+                                        <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                            <label>Buscar Cliente (Email)</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <input
+                                                    placeholder="Buscar por email..."
+                                                    value={userSearchTerm}
+                                                    onChange={e => setUserSearchTerm(e.target.value)}
+                                                />
+                                                {userSearchTerm && (
+                                                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--border)', borderRadius: '8px', zIndex: 10, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                                                        {allProfiles.filter(p => p.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(p => (
+                                                            <div
+                                                                key={p.id}
+                                                                style={{ padding: '0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
+                                                                onClick={() => {
+                                                                    setFormContent({ ...formContent, user_id: p.id, user_email: p.email })
+                                                                    setUserSearchTerm(p.email)
+                                                                }}
+                                                            >
+                                                                {p.email} ({p.full_name})
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="input-group">
                                             <label>Tipo de Orden</label>
@@ -389,32 +442,137 @@ export const StaffPanel: React.FC = () => {
                                         </div>
                                         <div className="input-group">
                                             <label>Moneda Origen</label>
-                                            <input placeholder="Bs, USD, USDT..." onChange={e => setFormContent({ ...formContent, origin_currency: e.target.value })} />
+                                            <select onChange={e => setFormContent({ ...formContent, origin_currency: e.target.value })}>
+                                                <option value="">Seleccione...</option>
+                                                <option value="Bs">Bs</option>
+                                                <option value="USD">USD</option>
+                                                <option value="USDT">USDT</option>
+                                                <option value="USDC">USDC</option>
+                                            </select>
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Moneda Destino</label>
+                                            <select onChange={e => setFormContent({ ...formContent, destination_currency: e.target.value })}>
+                                                <option value="">Seleccione...</option>
+                                                <option value="USD">USD</option>
+                                                <option value="EUR">EUR</option>
+                                                <option value="USDT">USDT</option>
+                                                <option value="USDC">USDC</option>
+                                            </select>
+                                        </div>
+                                        <div className="input-group">
+                                            <label>Red (Cripto)</label>
+                                            <input placeholder="Ethereum, Base, etc." onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, network: e.target.value } })} />
+                                        </div>
+                                        <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                            <label>Address / Wallet Destino</label>
+                                            <input placeholder="0x..." onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, address: e.target.value } })} />
+                                        </div>
+                                    </>
+                                )}
+
+                                {activeTab === 'payins' && (
+                                    <>
+                                        <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                            <label>Buscar Cliente (Email)</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <input
+                                                    placeholder="Buscar por email..."
+                                                    value={userSearchTerm}
+                                                    onChange={e => setUserSearchTerm(e.target.value)}
+                                                />
+                                                {userSearchTerm && (
+                                                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--border)', borderRadius: '8px', zIndex: 10, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                                                        {allProfiles.filter(p => p.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(p => (
+                                                            <div
+                                                                key={p.id}
+                                                                style={{ padding: '0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
+                                                                onClick={() => {
+                                                                    setFormContent({ ...formContent, user_id: p.id })
+                                                                    setUserSearchTerm(p.email)
+                                                                }}
+                                                            >
+                                                                {p.email} ({p.full_name})
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="input-group">
                                             <label>Tipo de Ruta</label>
                                             <select onChange={e => setFormContent({ ...formContent, type: e.target.value })}>
                                                 <option value="">Seleccione...</option>
-                                                <option value="ACH_to_crypto">ACH a Cripto</option>
+                                                <option value="ACH_to_crypto">ACH a Billetera</option>
                                                 <option value="crypto_to_crypto">Cripto a Cripto</option>
-                                                <option value="incoming_transfer">Transferencia Entrante</option>
+                                                <option value="crypto_to_ACH">Cripto a ACH</option>
                                             </select>
                                         </div>
                                         <div className="input-group">
-                                            <label>Banco</label>
-                                            <input placeholder="Nombre del Banco" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, banco: e.target.value } })} />
+                                            <label>Moneda Origen</label>
+                                            <input placeholder="USD, USDT, etc." onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, origin_currency: e.target.value } })} />
+                                        </div>
+
+                                        <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                                            <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Instrucciones de Deposito (Que recibe el cliente)</h4>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <input placeholder="Banco" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, banco: e.target.value } })} />
+                                                <input placeholder="Cuenta" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, cuenta: e.target.value } })} />
+                                                <input placeholder="Routing" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, routing: e.target.value } })} />
+                                                <input placeholder="Red / Address" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, network_address: e.target.value } })} />
+                                            </div>
+                                        </div>
+
+                                        <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                                            <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Datos de Destino Final</h4>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <input placeholder="Billetera Destino" onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, destination_wallet: e.target.value } })} />
+                                                <input placeholder="Moneda Destino" onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, destination_currency: e.target.value } })} />
+                                                <input placeholder="Red Destino" onChange={e => setFormContent({ ...formContent, metadata: { ...formContent.metadata, destination_network: e.target.value } })} />
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                {activeTab === 'transfers' && (
+                                    <>
+                                        <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                            <label>Buscar Cliente (Email)</label>
+                                            <div style={{ position: 'relative' }}>
+                                                <input
+                                                    placeholder="Email o ID del cliente..."
+                                                    value={userSearchTerm}
+                                                    onChange={e => setUserSearchTerm(e.target.value)}
+                                                />
+                                                {userSearchTerm && (
+                                                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--border)', borderRadius: '8px', zIndex: 10, maxHeight: '200px', overflowY: 'auto', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                                                        {allProfiles.filter(p => p.email?.toLowerCase().includes(userSearchTerm.toLowerCase())).map(p => (
+                                                            <div
+                                                                key={p.id}
+                                                                style={{ padding: '0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
+                                                                onClick={() => {
+                                                                    setFormContent({ ...formContent, user_id: p.id })
+                                                                    setUserSearchTerm(p.email)
+                                                                }}
+                                                            >
+                                                                {p.email} ({p.full_name})
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="input-group">
-                                            <label>Cuenta</label>
-                                            <input placeholder="Número de cuenta" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, cuenta: e.target.value } })} />
+                                            <label>Monto</label>
+                                            <input type="number" placeholder="0.00" onChange={e => setFormContent({ ...formContent, amount: Number(e.target.value) })} />
                                         </div>
                                         <div className="input-group">
-                                            <label>Routing / ABA</label>
-                                            <input placeholder="Routing Number" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, routing: e.target.value } })} />
+                                            <label>Moneda</label>
+                                            <input placeholder="USDT, USDC, USD..." onChange={e => setFormContent({ ...formContent, currency: e.target.value })} />
                                         </div>
                                         <div className="input-group">
-                                            <label>Red / Address (Cripto)</label>
-                                            <input placeholder="Red y/o Dirección" onChange={e => setFormContent({ ...formContent, instructions: { ...formContent.instructions, network_address: e.target.value } })} />
+                                            <label>ID de Transferencia Externa</label>
+                                            <input placeholder="TXID o Referencia..." onChange={e => setFormContent({ ...formContent, bridge_transfer_id: e.target.value })} />
                                         </div>
                                     </>
                                 )}
@@ -613,41 +771,154 @@ export const StaffPanel: React.FC = () => {
                                             </div>
                                         )}
 
+                                        <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Datos de Destino y Red</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Billetera Destino</label>
+                                                <input
+                                                    placeholder="Billetera"
+                                                    defaultValue={selectedItem.metadata?.destination_wallet || selectedItem.metadata?.destination_address}
+                                                    onChange={e => {
+                                                        const newMeta = { ...selectedItem.metadata, destination_wallet: e.target.value };
+                                                        if (isEditingMaterial) setFormContent({ ...formContent, metadata: newMeta });
+                                                        else selectedItem.metadata = newMeta;
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="input-group">
+                                                <label style={{ fontSize: '0.7rem' }}>Moneda Destino</label>
+                                                <input
+                                                    placeholder="Moneda"
+                                                    defaultValue={selectedItem.metadata?.destination_currency || selectedItem.metadata?.stablecoin}
+                                                    onChange={e => {
+                                                        const newMeta = { ...selectedItem.metadata, destination_currency: e.target.value };
+                                                        if (isEditingMaterial) setFormContent({ ...formContent, metadata: newMeta });
+                                                        else selectedItem.metadata = newMeta;
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                                <label style={{ fontSize: '0.7rem' }}>Red Destino</label>
+                                                <input
+                                                    placeholder="Red"
+                                                    defaultValue={selectedItem.metadata?.destination_network || selectedItem.metadata?.network}
+                                                    onChange={e => {
+                                                        const newMeta = { ...selectedItem.metadata, destination_network: e.target.value };
+                                                        if (isEditingMaterial) setFormContent({ ...formContent, metadata: newMeta });
+                                                        else selectedItem.metadata = newMeta;
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
                                         <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Configurar Instrucciones Bancarias</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                            {selectedItem.type === 'ACH_to_crypto' && (
+                                            {(selectedItem.type === 'ACH_to_crypto' || formContent.type === 'ACH_to_crypto') && (
                                                 <>
-                                                    <input placeholder="Banco" defaultValue={selectedItem.instructions?.banco} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, banco: e.target.value }} />
-                                                    <input placeholder="Cuenta" defaultValue={selectedItem.instructions?.cuenta} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, cuenta: e.target.value }} />
-                                                    <input placeholder="Routing" defaultValue={selectedItem.instructions?.routing} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, routing: e.target.value }} />
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Banco</label>
+                                                        <input
+                                                            placeholder="Banco"
+                                                            defaultValue={selectedItem.instructions?.banco}
+                                                            onChange={e => {
+                                                                const newInstr = { ...(isEditingMaterial ? formContent.instructions : selectedItem.instructions), banco: e.target.value };
+                                                                if (isEditingMaterial) setFormContent({ ...formContent, instructions: newInstr });
+                                                                else selectedItem.instructions = newInstr;
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Cuenta</label>
+                                                        <input
+                                                            placeholder="Cuenta"
+                                                            defaultValue={selectedItem.instructions?.cuenta}
+                                                            onChange={e => {
+                                                                const newInstr = { ...(isEditingMaterial ? formContent.instructions : selectedItem.instructions), cuenta: e.target.value };
+                                                                if (isEditingMaterial) setFormContent({ ...formContent, instructions: newInstr });
+                                                                else selectedItem.instructions = newInstr;
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Routing / ABA</label>
+                                                        <input
+                                                            placeholder="Routing"
+                                                            defaultValue={selectedItem.instructions?.routing}
+                                                            onChange={e => {
+                                                                const newInstr = { ...(isEditingMaterial ? formContent.instructions : selectedItem.instructions), routing: e.target.value };
+                                                                if (isEditingMaterial) setFormContent({ ...formContent, instructions: newInstr });
+                                                                else selectedItem.instructions = newInstr;
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </>
                                             )}
                                             {(selectedItem.type === 'crypto_to_crypto' || selectedItem.type === 'incoming_transfer' || !['ACH_to_crypto'].includes(selectedItem.type)) && (
                                                 <>
-                                                    <input placeholder="Red / Instrucci\u00f3n" defaultValue={selectedItem.instructions?.network || selectedItem.instructions?.network_address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, network_address: e.target.value }} />
-                                                    <input placeholder="Address / Info Adicional" defaultValue={selectedItem.instructions?.address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, address: e.target.value }} />
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Red / Instrucción</label>
+                                                        <input
+                                                            placeholder="Red / Instrucción"
+                                                            defaultValue={selectedItem.instructions?.network || selectedItem.instructions?.network_address}
+                                                            onChange={e => {
+                                                                const newInstr = { ...(isEditingMaterial ? formContent.instructions : selectedItem.instructions), network_address: e.target.value };
+                                                                if (isEditingMaterial) setFormContent({ ...formContent, instructions: newInstr });
+                                                                else selectedItem.instructions = newInstr;
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Address / Info Adicional</label>
+                                                        <input
+                                                            placeholder="Address / Info Adicional"
+                                                            defaultValue={selectedItem.instructions?.address}
+                                                            onChange={e => {
+                                                                const newInstr = { ...(isEditingMaterial ? formContent.instructions : selectedItem.instructions), address: e.target.value };
+                                                                if (isEditingMaterial) setFormContent({ ...formContent, instructions: newInstr });
+                                                                else selectedItem.instructions = newInstr;
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </>
                                             )}
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
-                                        <button
-                                            onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })}
-                                            className="btn-primary"
-                                            style={{ flex: 1 }}
-                                        >
-                                            Activar con estos Datos
-                                        </button>
-                                        {userRole === 'admin' && (
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditingMaterial(true)
-                                                    setFormContent(selectedItem)
-                                                }}
-                                                className="btn-secondary"
-                                            >
-                                                Editar
-                                            </button>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: 'auto' }}>
+                                        {isEditingMaterial ? (
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button onClick={() => setIsEditingMaterial(false)} className="btn-secondary" style={{ flex: 1 }}>Cancelar</button>
+                                                <button
+                                                    onClick={() => {
+                                                        setPendingAction({ type: 'edit' })
+                                                        setShowReasonModal(true)
+                                                    }}
+                                                    className="btn-primary"
+                                                    style={{ flex: 1 }}
+                                                >
+                                                    Guardar Cambios
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })}
+                                                    className="btn-primary"
+                                                    style={{ flex: 1 }}
+                                                >
+                                                    {selectedItem.status === 'active' ? 'Actualizar Instrucciones' : 'Activar con estos Datos'}
+                                                </button>
+                                                {userRole === 'admin' && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setIsEditingMaterial(true)
+                                                            setFormContent(selectedItem)
+                                                        }}
+                                                        className="btn-secondary"
+                                                    >
+                                                        Editar
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </>
