@@ -2,22 +2,32 @@ import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
     Users,
-    ExternalLink,
     Search,
     ArrowUpRight,
     ArrowDownLeft,
-    Shield
+    Shield,
+    Box,
+    FileDown
 } from 'lucide-react'
+import { generatePaymentPDF } from '../lib/pdf'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export const StaffPanel: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'config'>('onboarding')
+    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'orders' | 'config'>('onboarding')
     const [items, setItems] = useState<any[]>([])
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [searchQuery, setSearchQuery] = useState('')
 
     // Config states
     const [fees, setFees] = useState<any[]>([])
+
+    // Order processing states
+    const [staffExchangeRate, setStaffExchangeRate] = useState<string>('')
+    const [staffConvertedAmount, setStaffConvertedAmount] = useState<string>('')
+    const [staffFee, setStaffFee] = useState<string>('')
+    const [staffReference, setStaffReference] = useState<string>('')
+    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [railFilter, setRailFilter] = useState<string>('all')
 
     useEffect(() => {
         fetchData()
@@ -32,6 +42,8 @@ export const StaffPanel: React.FC = () => {
             query = supabase.from('payin_routes').select('*, profiles(email)').order('created_at', { ascending: false })
         } else if (activeTab === 'transfers') {
             query = supabase.from('bridge_transfers').select('*, profiles(email)').order('created_at', { ascending: false })
+        } else if (activeTab === 'orders') {
+            query = supabase.from('payment_orders').select('*, profiles(email)').order('created_at', { ascending: false })
         } else if (activeTab === 'config') {
             const { data } = await supabase.from('fees_config').select('*')
             if (data) setFees(data)
@@ -47,7 +59,6 @@ export const StaffPanel: React.FC = () => {
         if (!item) return
 
         try {
-            // 1. Update status in the main table
             const { error } = await supabase
                 .from(table)
                 .update({ status, ...additionalData })
@@ -55,14 +66,11 @@ export const StaffPanel: React.FC = () => {
 
             if (error) throw error
 
-            // 2. Specialized Logic per Table
             if (table === 'onboarding') {
                 const profileStatus = status === 'verified' ? 'verified' : (status === 'rejected' ? 'rejected' : status)
-                const { error: pError } = await supabase.from('profiles').update({ onboarding_status: profileStatus }).eq('id', item.user_id)
-                if (pError) throw pError
+                await supabase.from('profiles').update({ onboarding_status: profileStatus }).eq('id', item.user_id)
 
                 if (status === 'verified') {
-                    // Check if wallet exists first to avoid error
                     const { data: existingWallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).maybeSingle()
                     if (!existingWallet) {
                         await supabase.from('wallets').insert([{ user_id: item.user_id, currency: 'USD' }])
@@ -71,7 +79,6 @@ export const StaffPanel: React.FC = () => {
             }
 
             if (table === 'bridge_transfers' && status === 'completed') {
-                // LEDGER INMUTABLE: Create entry only on completion
                 const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).single()
                 if (wallet) {
                     await supabase.from('ledger_entries').insert([{
@@ -98,15 +105,6 @@ export const StaffPanel: React.FC = () => {
         if (data?.signedUrl) window.open(data.signedUrl, '_blank')
     }
 
-    const translateType = (type: string) => {
-        const types: any = {
-            'ACH_to_crypto': 'ACH a Crypto',
-            'crypto_to_crypto': 'Crypto a Crypto',
-            'incoming_transfer': 'Otros Activos / Tron USDT'
-        }
-        return types[type] || type.replace(/_/g, ' ')
-    }
-
     const translateStatus = (status: string) => {
         const statuses: any = {
             'submitted': 'Enviado',
@@ -118,9 +116,25 @@ export const StaffPanel: React.FC = () => {
             'under_review': 'En Revisión',
             'inactive': 'Desactivada',
             'waiting_ubo_kyc': 'Esperando KYC Socios',
-            'kyb_passed': 'Empresa Aprobada'
+            'kyb_passed': 'Empresa Aprobada',
+            'created': 'Creada',
+            'waiting_deposit': 'Esperando Depósito',
+            'deposit_received': 'Depósito Recibido',
+            'processing': 'Procesando',
+            'completed': 'Completado',
+            'failed': 'Fallido'
         }
         return statuses[status] || status
+    }
+
+    const translateOrderType = (type: string) => {
+        const types: any = {
+            'BO_TO_WORLD': 'Pagar al Exterior',
+            'WORLD_TO_BO': 'Recibir en Bolivia',
+            'US_TO_WALLET': 'Recibir desde EE.UU.',
+            'CRYPTO_TO_CRYPTO': 'Enviar Cripto'
+        }
+        return types[type] || type
     }
 
     return (
@@ -128,7 +142,7 @@ export const StaffPanel: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem' }}>
                 <h1 style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 800, margin: 0 }}>Gestión</h1>
                 <div style={{ display: 'flex', gap: '0.75rem', width: '100%', maxWidth: '400px' }}>
-                    <div style={{
+                    <div className="search-bar" style={{
                         background: 'var(--bg-card)',
                         border: '1px solid var(--border)',
                         borderRadius: '12px',
@@ -146,12 +160,33 @@ export const StaffPanel: React.FC = () => {
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        style={{ padding: '0.6rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                    >
+                        <option value="all">Estado: Todos</option>
+                        {['created', 'waiting_deposit', 'deposit_received', 'processing', 'sent', 'completed', 'failed'].map(s => (
+                            <option key={s} value={s}>{translateStatus(s)}</option>
+                        ))}
+                    </select>
+                    {activeTab === 'orders' && (
+                        <select
+                            value={railFilter}
+                            onChange={(e) => setRailFilter(e.target.value)}
+                            style={{ padding: '0.6rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.8rem' }}
+                        >
+                            <option value="all">Riel: Todos</option>
+                            {['PSAV', 'SWIFT', 'ACH', 'DIGITAL_NETWORK'].map(r => (
+                                <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             </div>
 
             <div style={{ display: 'flex', gap: '2rem', flexDirection: 'column' }}>
-                {/* Tabs */}
-                <div style={{
+                <div className="tabs-container" style={{
                     display: 'flex',
                     flexDirection: 'row',
                     gap: '0.5rem',
@@ -160,21 +195,23 @@ export const StaffPanel: React.FC = () => {
                     paddingBottom: '0.5rem',
                     scrollbarWidth: 'none'
                 }}>
-                    <button onClick={() => setActiveTab('onboarding')} className={`nav-item ${activeTab === 'onboarding' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <button onClick={() => setActiveTab('onboarding')} className={`nav-item ${activeTab === 'onboarding' ? 'active' : ''}`}>
                         <Users size={18} /> Onboarding
                     </button>
-                    <button onClick={() => setActiveTab('payins')} className={`nav-item ${activeTab === 'payins' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <button onClick={() => setActiveTab('payins')} className={`nav-item ${activeTab === 'payins' ? 'active' : ''}`}>
                         <ArrowDownLeft size={18} /> Rutas
                     </button>
-                    <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`}>
                         <ArrowUpRight size={18} /> Transfers
                     </button>
-                    <button onClick={() => setActiveTab('config')} className={`nav-item ${activeTab === 'config' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    <button onClick={() => setActiveTab('orders')} className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`}>
+                        <Box size={18} /> Órdenes
+                    </button>
+                    <button onClick={() => setActiveTab('config')} className={`nav-item ${activeTab === 'config' ? 'active' : ''}`}>
                         <Shield size={18} /> Configuración
                     </button>
                 </div>
 
-                {/* Content Area */}
                 <div style={{ flex: 1 }}>
                     {activeTab === 'config' ? (
                         <div className="premium-card">
@@ -214,13 +251,20 @@ export const StaffPanel: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {items
-                                        .filter(item => item.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                        .filter(item => {
+                                            const matchesSearch = item.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+                                            const matchesStatus = statusFilter === 'all' || item.status === statusFilter
+                                            const matchesRail = railFilter === 'all' || item.processing_rail === railFilter
+                                            return matchesSearch && matchesStatus && matchesRail
+                                        })
                                         .map(item => (
                                             <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '1.25rem' }}>
                                                     <div style={{ fontWeight: 600 }}>{item.profiles?.email}</div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                                        {item.transfer_kind ? `${item.transfer_kind} (${item.business_purpose})` : (item.type || 'General')}
+                                                        {activeTab === 'orders'
+                                                            ? `${translateOrderType(item.order_type)} [${item.processing_rail.split('_')[0].toUpperCase()}]`
+                                                            : (item.transfer_kind ? `${item.transfer_kind} (${item.business_purpose})` : (item.type || 'General'))}
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '1.25rem' }}>
@@ -229,8 +273,8 @@ export const StaffPanel: React.FC = () => {
                                                         fontWeight: 700,
                                                         padding: '4px 8px',
                                                         borderRadius: '6px',
-                                                        background: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                                        color: ['verified', 'paid', 'completed', 'active'].includes(item.status) ? 'var(--success)' : (item.status === 'inactive' || item.status === 'rejected' ? 'var(--error)' : 'var(--warning)'),
+                                                        background: ['verified', 'paid', 'completed', 'active', 'deposit_received'].includes(item.status) ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                                        color: ['verified', 'paid', 'completed', 'active', 'deposit_received'].includes(item.status) ? 'var(--success)' : (['inactive', 'rejected', 'failed'].includes(item.status) ? 'var(--error)' : 'var(--warning)'),
                                                         textTransform: 'uppercase'
                                                     }}>
                                                         {translateStatus(item.status)}
@@ -240,9 +284,17 @@ export const StaffPanel: React.FC = () => {
                                                     {new Date(item.updated_at || item.created_at).toLocaleDateString()}
                                                 </td>
                                                 <td style={{ padding: '1.25rem', textAlign: 'right' }}>
-                                                    <button onClick={() => setSelectedItem(item)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
-                                                        Revisar
-                                                    </button>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                                        {activeTab === 'orders' && (
+                                                            <div style={{ textAlign: 'right', marginRight: '1rem' }}>
+                                                                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{item.amount_origin} {item.origin_currency}</div>
+                                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>→ {item.amount_converted || '?'} {item.destination_currency}</div>
+                                                            </div>
+                                                        )}
+                                                        <button onClick={() => setSelectedItem(item)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
+                                                            Revisar
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -253,242 +305,283 @@ export const StaffPanel: React.FC = () => {
                 </div>
             </div>
 
-            {/* Modal-like Review Area */}
             <AnimatePresence>
                 {selectedItem && (
                     <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 50 }}
+                        initial={{ opacity: 0, x: 100 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 100 }}
+                        className="review-panel"
                         style={{
                             position: 'fixed',
-                            bottom: 0,
+                            top: 0,
                             right: 0,
                             width: 'min(100%, 450px)',
                             height: '100vh',
                             background: '#fff',
                             boxShadow: '-10px 0 30px rgba(0,0,0,0.1)',
                             zIndex: 1100,
-                            padding: 'clamp(1.5rem, 5vw, 3rem)',
+                            padding: '2rem',
                             display: 'flex',
-                            flexDirection: 'column'
+                            flexDirection: 'column',
+                            overflowY: 'auto'
                         }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                            <h2 style={{ fontSize: 'clamp(1.2rem, 4vw, 1.5rem)', fontWeight: 800 }}>Revisar Ítem</h2>
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Detalles de Revisión</h2>
                             <button onClick={() => setSelectedItem(null)} className="btn-secondary" style={{ padding: '0.5rem' }}>✕</button>
                         </div>
 
-                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             <div>
-                                <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Email del Usuario</h4>
+                                <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Usuario</h4>
                                 <p style={{ fontWeight: 600 }}>{selectedItem.profiles?.email}</p>
                             </div>
 
                             {activeTab === 'onboarding' && (
                                 <>
-                                    <div>
-                                        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Detalles del Perfil</h4>
-                                        <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                                            {selectedItem.data && Object.entries(selectedItem.data).map(([key, val]) => {
-                                                if (typeof val === 'string' && (val.includes('/') || val.length > 60)) return null;
-                                                if (key === 'ubos') return null;
-                                                return (
-                                                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(0,0,0,0.03)', paddingBottom: '0.3rem' }}>
-                                                        <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase' }}>{key.replace(/_/g, ' ')}:</span>
-                                                        <span style={{ fontWeight: 500 }}>{String(val)}</span>
-                                                    </div>
-                                                )
-                                            })}
-                                            {selectedItem.data?.ubos?.length > 0 && (
-                                                <div style={{ marginTop: '0.5rem' }}>
-                                                    <p style={{ fontWeight: 700, fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '0.5rem' }}>Beneficiarios Finales:</p>
-                                                    {selectedItem.data.ubos.map((ubo: any, i: number) => (
-                                                        <div key={i} style={{ fontSize: '0.75rem', marginBottom: '0.3rem', background: '#fff', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                            {ubo.first_names} {ubo.last_names} - {ubo.percentage}% ({ubo.nationality})
-                                                        </div>
-                                                    ))}
+                                    <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                                        {selectedItem.data && Object.entries(selectedItem.data).map(([key, val]) => {
+                                            if (typeof val === 'string' && (val.includes('/') || val.length > 60)) return null;
+                                            if (key === 'ubos') return null;
+                                            return (
+                                                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{key.replace(/_/g, ' ')}:</span>
+                                                    <span style={{ fontWeight: 500 }}>{String(val)}</span>
                                                 </div>
-                                            )}
-                                        </div>
+                                            )
+                                        })}
                                     </div>
-
-                                    <div>
-                                        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Documentos Adjuntos</h4>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                            {['id_front', 'id_back', 'selfie', 'proof_of_address', 'company_cert'].map(doc => selectedItem.data?.[doc] && (
-                                                <button key={doc} onClick={() => handleViewDoc(selectedItem.data[doc])} className="btn-secondary" style={{ fontSize: '0.7rem', gap: '0.4rem', padding: '0.5rem' }}>
-                                                    <ExternalLink size={12} /> {doc.replace(/_/g, ' ')}
-                                                </button>
-                                            ))}
-                                            {selectedItem.data?.ubos?.map((ubo: any, uIdx: number) => (
-                                                ubo.docs && Object.entries(ubo.docs).map(([dKey, dVal]: any) => (
-                                                    <button key={`${uIdx}-${dKey}`} onClick={() => handleViewDoc(dVal)} className="btn-secondary" style={{ fontSize: '0.7rem', gap: '0.4rem', padding: '0.5rem', borderColor: 'var(--primary-light)' }}>
-                                                        <ExternalLink size={12} /> {ubo.first_names} - {dKey.replace(/_/g, ' ')}
-                                                    </button>
-                                                ))
-                                            ))}
-                                        </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                        {['id_front', 'id_back', 'selfie', 'proof_of_address', 'company_cert'].map(doc => selectedItem.data?.[doc] && (
+                                            <button key={doc} onClick={() => handleViewDoc(selectedItem.data[doc])} className="btn-secondary" style={{ fontSize: '0.7rem' }}>
+                                                Ver {doc.replace(/_/g, ' ')}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                                        {selectedItem.type === 'business' && selectedItem.status === 'under_review' ? (
-                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'onboarding', 'waiting_ubo_kyc')} className="btn-primary" style={{ flex: 1, background: 'var(--primary)', boxShadow: 'none' }}>
-                                                Aprobar Empresa (Solicitar KYC Socios)
-                                            </button>
-                                        ) : (
-                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'onboarding', 'verified')} className="btn-primary" style={{ flex: 1, background: 'var(--success)', boxShadow: 'none' }}>
-                                                Aprobar Final
-                                            </button>
-                                        )}
-                                        <button onClick={() => handleUpdateStatus(selectedItem.id, 'onboarding', 'rejected')} className="btn-primary" style={{ flex: 1, background: 'var(--error)', boxShadow: 'none' }}>
-                                            Rechazar
-                                        </button>
+                                    <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                                        <button onClick={() => handleUpdateStatus(selectedItem.id, 'onboarding', 'verified')} className="btn-primary" style={{ flex: 1, background: 'var(--success)' }}>Aprobar</button>
+                                        <button onClick={() => handleUpdateStatus(selectedItem.id, 'onboarding', 'rejected')} className="btn-secondary" style={{ flex: 1, color: 'var(--error)' }}>Rechazar</button>
                                     </div>
                                 </>
                             )}
 
                             {activeTab === 'payins' && (
                                 <>
-                                    <div style={{ background: '#F8FAFC', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                                        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '1rem' }}>Configurar Instrucciones para {translateType(selectedItem.type)}</h4>
+                                    <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
+                                        <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Solicitud del Cliente</h4>
 
-                                        {selectedItem.metadata && Object.keys(selectedItem.metadata).length > 0 && (
-                                            <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '1rem', borderRadius: '12px', marginBottom: '1.5rem', border: '1px dashed var(--primary-light)' }}>
-                                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Solicitud del Cliente:</p>
-                                                {selectedItem.metadata.stablecoin && (
-                                                    <div style={{ fontSize: '0.8rem', marginBottom: '0.2rem' }}><strong>Token:</strong> {selectedItem.metadata.stablecoin}</div>
-                                                )}
-                                                {selectedItem.metadata.destination_address && (
-                                                    <div style={{ fontSize: '0.8rem' }}><strong>Address:</strong> <code style={{ fontSize: '0.7rem' }}>{selectedItem.metadata.destination_address}</code></div>
+                                        {selectedItem.metadata && (
+                                            <div style={{ background: '#F0F9FF', padding: '1rem', borderRadius: '12px', border: '1px solid #BAE6FD', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
+                                                <div style={{ marginBottom: '0.5rem' }}>
+                                                    <span style={{ color: '#0369A1', fontWeight: 700 }}>Billetera de Destino:</span>
+                                                    <code style={{ display: 'block', background: '#fff', padding: '4px', borderRadius: '4px', marginTop: '4px', wordBreak: 'break-all' }}>
+                                                        {selectedItem.metadata.destination_address || 'No provista'}
+                                                    </code>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                                    <div>
+                                                        <span style={{ color: '#0369A1', fontWeight: 700 }}>Moneda:</span> {selectedItem.metadata.stablecoin}
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: '#0369A1', fontWeight: 700 }}>Red:</span> {selectedItem.metadata.network}
+                                                    </div>
+                                                </div>
+                                                {selectedItem.metadata.intended_amount && (
+                                                    <div style={{ marginTop: '0.5rem' }}>
+                                                        <span style={{ color: '#0369A1', fontWeight: 700 }}>Monto Estimado:</span> {selectedItem.metadata.intended_amount} USD
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
 
+                                        <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Configurar Instrucciones Bancarias</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             {selectedItem.type === 'ACH_to_crypto' && (
                                                 <>
-                                                    <div className="input-group">
-                                                        <label>Banco</label>
-                                                        <input defaultValue={selectedItem.instructions?.banco || 'Bridge Bank'} onChange={e => {
-                                                            selectedItem.instructions = { ...selectedItem.instructions, banco: e.target.value }
-                                                        }} />
-                                                    </div>
-                                                    <div className="input-group">
-                                                        <label>Número de Cuenta</label>
-                                                        <input defaultValue={selectedItem.instructions?.cuenta} onChange={e => {
-                                                            selectedItem.instructions = { ...selectedItem.instructions, cuenta: e.target.value }
-                                                        }} />
-                                                    </div>
-                                                    <div className="input-group">
-                                                        <label>Número de Ruta (Routing)</label>
-                                                        <input defaultValue={selectedItem.instructions?.routing} onChange={e => {
-                                                            selectedItem.instructions = { ...selectedItem.instructions, routing: e.target.value }
-                                                        }} />
-                                                    </div>
+                                                    <input placeholder="Banco" defaultValue={selectedItem.instructions?.banco} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, banco: e.target.value }} />
+                                                    <input placeholder="Cuenta" defaultValue={selectedItem.instructions?.cuenta} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, cuenta: e.target.value }} />
+                                                    <input placeholder="Routing" defaultValue={selectedItem.instructions?.routing} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, routing: e.target.value }} />
                                                 </>
                                             )}
-
                                             {(selectedItem.type === 'crypto_to_crypto' || selectedItem.type === 'incoming_transfer') && (
                                                 <>
-                                                    <div className="input-group">
-                                                        <label>Red / Protocolo</label>
-                                                        <input placeholder="e.g. Solana, Tron (TRC20), Base" defaultValue={selectedItem.instructions?.network} onChange={e => {
-                                                            selectedItem.instructions = { ...selectedItem.instructions, network: e.target.value }
-                                                        }} />
-                                                    </div>
-                                                    <div className="input-group">
-                                                        <label>Dirección de Wallet</label>
-                                                        <input placeholder="0x... o Address" defaultValue={selectedItem.instructions?.address} onChange={e => {
-                                                            selectedItem.instructions = { ...selectedItem.instructions, address: e.target.value }
-                                                        }} />
-                                                    </div>
+                                                    <input placeholder="Red" defaultValue={selectedItem.instructions?.network} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, network: e.target.value }} />
+                                                    <input placeholder="Address" defaultValue={selectedItem.instructions?.address} onChange={e => selectedItem.instructions = { ...selectedItem.instructions, address: e.target.value }} />
                                                 </>
                                             )}
-
-                                            <div className="input-group">
-                                                <label>Notas Adicionales (Opcional)</label>
-                                                <input placeholder="Referencia o notas" defaultValue={selectedItem.instructions?.notes} onChange={e => {
-                                                    selectedItem.instructions = { ...selectedItem.instructions, notes: e.target.value }
-                                                }} />
-                                            </div>
                                         </div>
                                     </div>
-
-                                    <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
-                                        <button
-                                            onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })}
-                                            className="btn-primary"
-                                            style={{ flex: 1 }}
-                                        >
-                                            {selectedItem.status === 'active' ? 'Actualizar Instrucciones' : 'Activar y Enviar'}
-                                        </button>
-                                        {selectedItem.status === 'active' && (
-                                            <button
-                                                onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'inactive')}
-                                                className="btn-secondary"
-                                                style={{ color: '#ef4444', borderColor: '#ef4444' }}
-                                            >
-                                                Desactivar
-                                            </button>
-                                        )}
-                                    </div>
+                                    <button onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })} className="btn-primary">Activar Ruta</button>
                                 </>
                             )}
 
                             {activeTab === 'transfers' && (
                                 <>
-                                    <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '1.5rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Monto:</span>
-                                            <span style={{ fontWeight: 800, fontSize: '1.25rem' }}>${selectedItem.amount.toLocaleString()} {selectedItem.currency}</span>
+                                    <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Monto:</span>
+                                            <span style={{ fontWeight: 700 }}>{selectedItem.amount} {selectedItem.currency}</span>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Fee Guira:</span>
-                                            <span style={{ fontWeight: 600, color: 'var(--error)' }}>- ${selectedItem.fee_amount?.toLocaleString()}</span>
-                                        </div>
-                                        {selectedItem.exchange_rate && selectedItem.exchange_rate !== 1 && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>T. Cambio:</span>
-                                                <span style={{ fontWeight: 600 }}>{selectedItem.exchange_rate}</span>
-                                            </div>
-                                        )}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Monto Neto:</span>
-                                            <span style={{ fontWeight: 800, color: 'var(--success)' }}>${selectedItem.net_amount?.toLocaleString()}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo:</span>
-                                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedItem.transfer_kind}</span>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span>Fee:</span>
+                                            <span style={{ color: 'var(--error)' }}>-{selectedItem.fee_amount}</span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Destino:</span>
-                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', maxWidth: '200px', wordBreak: 'break-all', textAlign: 'right' }}>{selectedItem.destination_id}</span>
+                                            <span>Neto:</span>
+                                            <span style={{ fontWeight: 800, color: 'var(--success)' }}>{selectedItem.net_amount}</span>
+                                        </div>
+                                        <div style={{ marginTop: '1rem', fontSize: '0.8rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                                            <strong>Destino:</strong> {selectedItem.destination_id}
                                         </div>
                                     </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem' }}>
-                                        <button
-                                            onClick={() => handleUpdateStatus(selectedItem.id, 'bridge_transfers', 'completed')}
-                                            className="btn-primary"
-                                            style={{ background: 'var(--success)', boxShadow: 'none' }}
-                                        >
-                                            Confirmar Pago (Sim Webhook)
-                                        </button>
-                                        <button
-                                            onClick={() => handleUpdateStatus(selectedItem.id, 'bridge_transfers', 'failed')}
-                                            className="btn-primary"
-                                            style={{ background: 'var(--error)', boxShadow: 'none' }}
-                                        >
-                                            Marcar Error
-                                        </button>
+                                    <div style={{ display: 'flex', gap: '1rem' }}>
+                                        <button onClick={() => handleUpdateStatus(selectedItem.id, 'bridge_transfers', 'completed')} className="btn-primary" style={{ flex: 1, background: 'var(--success)' }}>Completar</button>
+                                        <button onClick={() => handleUpdateStatus(selectedItem.id, 'bridge_transfers', 'failed')} className="btn-secondary" style={{ flex: 1, color: 'var(--error)' }}>Fallar</button>
                                     </div>
-                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '1rem' }}>
-                                        Confirmar actualizará el Ledger inmutablemente.
-                                    </p>
                                 </>
                             )}
 
-                            {/* Removed obsolete payout tab */}
+                            {activeTab === 'orders' && (
+                                <>
+                                    <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo:</span>
+                                            <span style={{ fontWeight: 700 }}>{translateOrderType(selectedItem.order_type)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Monto:</span>
+                                            <span style={{ fontWeight: 800 }}>{selectedItem.amount_origin} {selectedItem.origin_currency}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rail:</span>
+                                            <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{selectedItem.processing_rail.replace(/_/g, ' ')}</span>
+                                        </div>
+                                        {selectedItem.metadata?.payment_reason && (
+                                            <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Motivo:</span>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{selectedItem.metadata.payment_reason}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {selectedItem.evidence_url && (
+                                        <div style={{ background: '#FFFBEB', padding: '1rem', borderRadius: '12px', border: '1px solid #FEF3C7' }}>
+                                            <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem' }}>
+                                                {selectedItem.order_type === 'BO_TO_WORLD' ? 'Factura / Proforma Adjunta:' : 'Comprobante de Depósito / QR:'}
+                                            </p>
+                                            <button onClick={() => window.open(selectedItem.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem' }}>Ver Documento</button>
+                                        </div>
+                                    )}
+
+                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                                        {selectedItem.status === 'created' || selectedItem.status === 'waiting_deposit' ? (
+                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'deposit_received')} className="btn-primary" style={{ width: '100%' }}>Confirmar Depósito</button>
+                                        ) : selectedItem.status === 'deposit_received' ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Tasa de Cambio Real</label>
+                                                        <input type="number" placeholder="Ej: 10.55" value={staffExchangeRate} onChange={e => setStaffExchangeRate(e.target.value)} />
+                                                    </div>
+                                                    <div className="input-group">
+                                                        <label style={{ fontSize: '0.7rem' }}>Comisión Real ($)</label>
+                                                        <input type="number" placeholder="Ej: 15.00" value={staffFee} onChange={e => setStaffFee(e.target.value)} />
+                                                    </div>
+                                                    <div className="input-group" style={{ gridColumn: '1/-1' }}>
+                                                        <label style={{ fontSize: '0.7rem' }}>Monto Neto Final ($)</label>
+                                                        <input type="number" placeholder="Monto total liquidado" value={staffConvertedAmount} onChange={e => setStaffConvertedAmount(e.target.value)} />
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'processing', {
+                                                        exchange_rate_applied: Number(staffExchangeRate),
+                                                        amount_converted: Number(staffConvertedAmount),
+                                                        fee_total: Number(staffFee)
+                                                    })}
+                                                    className="btn-primary"
+                                                    disabled={!staffExchangeRate || !staffConvertedAmount}
+                                                >
+                                                    Pasar a Procesamiento
+                                                </button>
+                                            </div>
+                                        ) : selectedItem.status === 'processing' ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                <div className="input-group">
+                                                    <label style={{ fontSize: '0.7rem' }}>Referencia / Hash (Evidencia)</label>
+                                                    <input placeholder="Hash o Ref Bancaria" value={staffReference} onChange={e => setStaffReference(e.target.value)} />
+                                                </div>
+                                                <div className="input-group">
+                                                    <label style={{ fontSize: '0.7rem' }}>Comprobante Final (PDF/Imagen):</label>
+                                                    <input id="staff_evidence" type="file" />
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        const file = (document.getElementById('staff_evidence') as HTMLInputElement).files?.[0]
+                                                        if (!file && !staffReference) return alert('Debes cargar un archivo o registrar el Hash/Referencia')
+
+                                                        try {
+                                                            let publicUrl = selectedItem.staff_comprobante_url
+                                                            if (file) {
+                                                                const fileExt = file.name.split('.').pop()
+                                                                const filePath = `evidences/${selectedItem.id}/staff_${Date.now()}.${fileExt}`
+                                                                const { error: uploadError } = await supabase.storage.from('order-evidences').upload(filePath, file)
+                                                                if (uploadError) throw uploadError
+                                                                const { data: { publicUrl: url } } = supabase.storage.from('order-evidences').getPublicUrl(filePath)
+                                                                publicUrl = url
+                                                            }
+
+                                                            await supabase.from('payment_orders').update({
+                                                                status: 'completed',
+                                                                staff_comprobante_url: publicUrl,
+                                                                metadata: { ...selectedItem.metadata, reference: staffReference }
+                                                            }).eq('id', selectedItem.id)
+
+                                                            setSelectedItem(null)
+                                                            fetchData()
+                                                        } catch (err: any) {
+                                                            alert('Error: ' + err.message)
+                                                        }
+                                                    }}
+                                                    className="btn-primary"
+                                                    style={{ background: 'var(--success)' }}
+                                                >
+                                                    Completar Orden
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 700 }}>
+                                                ORDEN FINALIZADA
+                                                <button
+                                                    onClick={() => generatePaymentPDF({
+                                                        id: selectedItem.id,
+                                                        userName: selectedItem.profiles?.email || 'Cliente',
+                                                        supplierName: selectedItem.metadata?.swiftDetails?.bankName || 'Destinatario Internacional',
+                                                        date: selectedItem.updated_at,
+                                                        amount: selectedItem.amount_origin,
+                                                        currency: selectedItem.origin_currency,
+                                                        fee: selectedItem.fee_total || 0,
+                                                        netAmount: selectedItem.amount_converted || selectedItem.amount_origin,
+                                                        exchangeRate: selectedItem.exchange_rate_applied,
+                                                        type: translateOrderType(selectedItem.order_type),
+                                                        rail: selectedItem.processing_rail,
+                                                        reference: selectedItem.metadata?.reference,
+                                                        paymentReason: selectedItem.metadata?.payment_reason
+                                                    })}
+                                                    className="btn-secondary"
+                                                    style={{ width: '100%', marginTop: '1rem', gap: '0.5rem' }}
+                                                >
+                                                    <FileDown size={14} /> Descargar Comprobante PDF
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {selectedItem.status !== 'completed' && (
+                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'failed')} className="btn-secondary" style={{ width: '100%', marginTop: '1rem', color: 'var(--error)' }}>Anular / Fallar</button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </motion.div>
                 )}

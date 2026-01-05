@@ -11,6 +11,9 @@ export interface PaymentDocData {
     netAmount: number
     exchangeRate?: number
     type: string
+    rail?: string
+    reference?: string
+    paymentReason?: string
 }
 
 export function generatePaymentPDF(data: PaymentDocData) {
@@ -42,24 +45,29 @@ export function generatePaymentPDF(data: PaymentDocData) {
         y += 10
     }
 
-    addRow('ID Operación', data.id)
+    addRow('ID Orden Guira', data.id)
     addRow('Cliente', data.userName)
-    addRow('Proveedor', data.supplierName)
-    addRow('Fecha', new Date(data.date).toLocaleDateString())
+    addRow('Proveedor / Beneficiario', data.supplierName)
+    addRow('Fecha de Proceso', new Date(data.date).toLocaleString())
+    addRow('Método de Procesamiento', data.type.replace(/_/g, ' ').toUpperCase())
     addRow('Monto Original', `${data.amount.toLocaleString()} ${data.currency}`)
 
     if (data.exchangeRate && data.exchangeRate !== 1) {
         addRow('Tipo de Cambio', data.exchangeRate.toString())
     }
 
-    addRow('Fee Guira', `${data.fee.toLocaleString()} ${data.currency}`)
-    addRow('Monto Neto Pagado', `${data.netAmount.toLocaleString()} ${data.currency}`)
-    addRow('Concepto', 'Pago de servicios / bienes')
+    addRow('Comisión Guira (Fees)', `${data.fee.toLocaleString()} ${data.currency}`)
+    addRow('Monto Final Liquidado', `${data.netAmount.toLocaleString()} ${data.currency}`)
+    if (data.rail) addRow('Riel de Pago', data.rail)
+    if (data.reference) addRow('Referencia / Hash', data.reference)
+    addRow('Motivo del Pago', data.paymentReason || 'Importación de servicios / Pago internacional')
 
     // Footer
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text('Este documento sirve como comprobante de transferencia y respaldo contable.', 20, 280)
+    doc.text('Guira presta servicios de orquestación, validación y documentación de operaciones financieras.', 20, 270)
+    doc.text('Guira no actúa como entidad financiera ni transmite fondos.', 20, 275)
+    doc.text('Los movimientos de dinero fueron ejecutados directamente a través de los rieles financieros indicados.', 20, 280)
     doc.text(`Generado automáticamente por Guira el ${new Date().toLocaleString()}`, 20, 285)
 
     doc.save(`Pago_Guira_${data.id.slice(0, 8)}.pdf`)

@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import { getFeeConfig, calculateFee } from './fees'
 
-export type TransferKind = 'wallet_to_wallet' | 'wallet_to_external_crypto' | 'wallet_to_external_bank' | 'virtual_account_to_wallet'
+export type TransferKind = 'wallet_to_wallet' | 'wallet_to_external_crypto' | 'wallet_to_external_bank' | 'virtual_account_to_wallet' | 'external_bank_to_wallet'
 export type BusinessPurpose = 'supplier_payment' | 'client_withdrawal' | 'funding' | 'liquidation' | 'internal'
 
 export interface CreateTransferParams {
@@ -25,6 +25,10 @@ export interface CreateTransferParams {
  */
 export async function createBridgeTransfer(params: CreateTransferParams) {
     const { userId, amount, currency, kind, purpose, idempotencyKey } = params
+
+    if (!amount || amount <= 0) {
+        throw new Error('Monto inválido para la transferencia. Debe ser mayor a 0.')
+    }
 
     // 1. Pre-validations
     const { data: profile, error: profileErr } = await supabase

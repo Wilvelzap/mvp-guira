@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CreditCard, Globe, Shield } from 'lucide-react'
-import type { BusinessPurpose } from '../lib/bridge'
-import { createBridgeTransfer } from '../lib/bridge'
+import { CreditCard, Globe } from 'lucide-react'
 import { getFeeConfig, calculateFee } from '../lib/fees'
 import { generatePaymentPDF } from '../lib/pdf'
+import { createPaymentOrder, uploadOrderEvidence } from '../lib/orders'
+import type { ProcessingRail, OrderType } from '../lib/orders'
+import { Upload, CheckCircle, Clock, Link } from 'lucide-react'
+
+type PaymentRoute = 'bolivia_to_exterior' | 'us_to_wallet' | 'crypto_to_crypto' | 'us_to_bolivia' | 'bank_to_crypto' | 'crypto_to_bank'
 
 export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => void }> = ({ initialRoute, onRouteClear }) => {
     const { user } = useAuth()
@@ -17,15 +20,17 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const [showAdvanced, setShowAdvanced] = useState(false)
 
     // Unified Flow states
-    const [selectedRoute, setSelectedRoute] = useState<null | 'bank_to_crypto' | 'crypto_to_crypto' | 'crypto_to_bank'>(null)
+    const [selectedRoute, setSelectedRoute] = useState<null | PaymentRoute>(null)
     const [sendNetwork, setSendNetwork] = useState('ethereum') // Origins
     const [receiveNetwork, setReceiveNetwork] = useState('base') // Destinations
-    const [fiatMethod, setFiatMethod] = useState<'ach' | 'wire'>('ach')
+    const [processingRail, setProcessingRail] = useState<ProcessingRail>('DIGITAL_NETWORK')
+    const [currentOrderId, setCurrentOrderId] = useState<string | null>(null)
+    const [waitingForEvidence, setWaitingForEvidence] = useState(false)
+    const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
 
     // Core Transaction Data
     const [amount, setAmount] = useState('')
     const [currency, setCurrency] = useState('USDC')
-    const [businessPurpose, setBusinessPurpose] = useState<BusinessPurpose>('supplier_payment')
     const [destinationId, setDestinationId] = useState('')
     const [clientCryptoAddress, setClientCryptoAddress] = useState('')
     const [clientStablecoin, setClientStablecoin] = useState('USDC')
@@ -41,6 +46,28 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     // Bolivia Specific
     const [amountBs, setAmountBs] = useState('')
     const exchangeRateBs = 10.5 // Mock exchange rate
+    const [receptionMethod, setReceptionMethod] = useState<'qr' | 'bank'>('qr')
+    const [qrFile, setQrFile] = useState<File | null>(null)
+
+    const [isConfirmed, setIsConfirmed] = useState(false)
+
+    // Step-by-Step "Pagar al exterior" states
+    const [fundingMethod, setFundingMethod] = useState<'bs' | 'crypto'>('bs')
+    const [deliveryMethod, setDeliveryMethod] = useState<'swift' | 'ach' | 'crypto'>('swift')
+    const [paymentReason, setPaymentReason] = useState('')
+    const [supportDocument, setSupportDocument] = useState<File | null>(null)
+
+    // Dynamic Destination Details
+    const [achDetails, setAchDetails] = useState({ routingNumber: '', accountNumber: '', bankName: '' })
+    const [swiftDetails, setSwiftDetails] = useState({
+        bankName: '',
+        swiftCode: '',
+        iban: '',
+        bankAddress: '',
+        country: ''
+    })
+    const [cryptoDestination, setCryptoDestination] = useState({ address: '', network: 'ethereum' })
+    const [isSwift, setIsSwift] = useState(false) // Deprecated but mapping to swift delivery method
 
     // Handle deep links from dashboard
     useEffect(() => {
@@ -52,11 +79,11 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
     // Assets mapping per network
     const networkAssets: Record<string, string[]> = {
-        'ethereum': ['USDC', 'USDT', 'EURC', 'PYUSD'],
-        'solana': ['USDC', 'USDT', 'EURC', 'PYUSD'],
-        'base': ['USDC', 'EURC', 'PYUSD'],
-        'polygon': ['USDC', 'USDT'],
-        'arbitrum': ['USDC', 'USDT']
+        'ethereum': ['USDC', 'USDT', 'ETH'],
+        'base': ['USDC', 'ETH'],
+        'solana': ['USDC', 'USDT', 'SOL'],
+        'polygon': ['USDC', 'USDT', 'POL'],
+        'arbitrum': ['USDC', 'ETH']
     }
 
     // Auto-adjust currencies when networks change
@@ -83,15 +110,36 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         if (!user) return
         setLoading(true)
 
-        const [routes, transfers, suppliersRes, feeRes] = await Promise.all([
+        const [routes, transfers, suppliersRes, feeRes, orders] = await Promise.all([
             supabase.from('payin_routes').select('*').eq('user_id', user.id),
             supabase.from('bridge_transfers').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
             supabase.from('suppliers').select('*').eq('user_id', user.id),
-            getFeeConfig('supplier_payment')
+            getFeeConfig('supplier_payment'),
+            supabase.from('payment_orders').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
         ])
 
         if (routes.data) setPayinRoutes(routes.data)
-        if (transfers.data) setBridgeTransfers(transfers.data)
+
+        // Merge bridge_transfers and payment_orders for history
+        const allHistory = [
+            ...(transfers.data || []),
+            ...(orders.data || []).map(o => ({
+                id: o.id,
+                created_at: o.created_at,
+                amount: o.amount_origin,
+                currency: o.origin_currency,
+                status: o.status,
+                transfer_kind: o.order_type,
+                business_purpose: 'supplier_payment',
+                metadata: o.metadata,
+                fee_amount: o.fee_total,
+                net_amount: o.amount_converted,
+                exchange_rate: o.exchange_rate_applied,
+                is_payment_order: true
+            }))
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+        if (allHistory) setBridgeTransfers(allHistory as any)
         if (suppliersRes.data) setSuppliers(suppliersRes.data)
         if (feeRes) setFeeConfig(feeRes)
         setLoading(false)
@@ -110,53 +158,129 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const resetFlow = () => {
         setSelectedRoute(null)
         setAmount('')
+        setAmountBs('')
         setDestinationId('')
         setClientCryptoAddress('')
         setError(null)
+        setProcessingRail('DIGITAL_NETWORK')
+        setWaitingForEvidence(false)
+        setEvidenceFile(null)
+        setIsSwift(false)
+        setIsConfirmed(false)
+        // Reset new fields
+        setFundingMethod('bs')
+        setDeliveryMethod('swift')
+        setPaymentReason('')
+        setSupportDocument(null)
+        setAchDetails({ routingNumber: '', accountNumber: '', bankName: '' })
+        setSwiftDetails({ bankName: '', swiftCode: '', iban: '', bankAddress: '', country: '' })
+        setCryptoDestination({ address: '', network: 'ethereum' })
     }
 
-    // MAPS to existing backend logic
+    const handleUploadEvidence = async () => {
+        if (!currentOrderId || !evidenceFile) return
+        setLoading(true)
+        try {
+            await uploadOrderEvidence(currentOrderId, evidenceFile, 'evidence_url')
+            setWaitingForEvidence(false)
+            fetchPaymentsData()
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const handleExecuteOperation = async () => {
         if (!user) return
+        if (!isConfirmed) {
+            setIsConfirmed(true)
+            return
+        }
         setLoading(true)
         setError(null)
 
         try {
-            if (selectedRoute === 'crypto_to_bank') {
-                if (!amount) throw new Error('Ingresa un monto válido')
-                const idempotencyKey = `transfer_${user.id}_${Date.now()}`
-                const { error: transferErr } = await createBridgeTransfer({
-                    userId: user.id,
-                    amount: Number(amount),
-                    currency,
-                    kind: 'wallet_to_external_bank',
-                    purpose: businessPurpose,
-                    idempotencyKey,
-                    destinationId,
-                    destinationType: selectedSupplier?.country === 'Bolivia' ? 'external_crypto_address' : 'external_account',
-                    network: sendNetwork || 'ethereum',
-                    exchangeRate: selectedSupplier?.country === 'Bolivia' ? exchangeRateBs : 1
-                })
-                if (transferErr) throw transferErr
-            } else if (selectedRoute === 'bank_to_crypto' || selectedRoute === 'crypto_to_crypto') {
-                const type = selectedRoute === 'bank_to_crypto' ? 'ACH_to_crypto' : 'crypto_to_crypto'
-                const { error } = await supabase
-                    .from('payin_routes')
-                    .insert([{
-                        user_id: user.id,
-                        type,
-                        status: 'submitted',
-                        metadata: {
-                            destination_address: clientCryptoAddress,
-                            stablecoin: clientStablecoin,
-                            network: receiveNetwork,
-                            origin_network: selectedRoute === 'crypto_to_crypto' ? sendNetwork : 'fiat'
-                        }
-                    }])
-                if (error) throw error
+            // 1. Determine Rail & OrderType
+            let orderType: OrderType = 'BO_TO_WORLD'
+            let finalRail: ProcessingRail = 'PSAV'
+
+            if (selectedRoute === 'bolivia_to_exterior') {
+                orderType = 'BO_TO_WORLD'
+                finalRail = fundingMethod === 'bs' ? 'PSAV' : 'DIGITAL_NETWORK'
+            } else if (selectedRoute === 'us_to_bolivia') {
+                orderType = 'WORLD_TO_BO'
+                finalRail = 'PSAV'
+            } else if (selectedRoute === 'us_to_wallet') {
+                orderType = 'US_TO_WALLET'
+                finalRail = 'ACH'
+            } else if (selectedRoute === 'crypto_to_crypto') {
+                orderType = 'CRYPTO_TO_CRYPTO'
+                finalRail = 'DIGITAL_NETWORK'
             }
 
-            resetFlow()
+            // 2. Prepare Metadata
+            const metadata: any = {
+                delivery_method: deliveryMethod,
+                payment_reason: paymentReason,
+                reception_method: receptionMethod,
+                intended_amount: amount ? Number(amount) : null,
+                destination_address: clientCryptoAddress || destinationId || cryptoDestination.address,
+                stablecoin: clientStablecoin || currency,
+                sendNetwork,
+                receiveNetwork
+            }
+
+            if (selectedRoute === 'bolivia_to_exterior') {
+                metadata.funding_method = fundingMethod
+                metadata.delivery_method = deliveryMethod
+                if (deliveryMethod === 'swift') metadata.swift_details = swiftDetails
+                if (deliveryMethod === 'ach') metadata.ach_details = achDetails
+                if (deliveryMethod === 'crypto') metadata.crypto_destination = cryptoDestination
+            } else if (isSwift) {
+                metadata.swiftDetails = swiftDetails
+            }
+
+            // 3. Create standard PaymentOrder (Order First)
+            const { data: order, error: orderErr } = await createPaymentOrder({
+                userId: user.id,
+                orderType,
+                rail: finalRail,
+                amountOrigin: Number(selectedRoute === 'bolivia_to_exterior' && fundingMethod === 'bs' ? amountBs : (amount || 0)),
+                originCurrency: (selectedRoute === 'bolivia_to_exterior' && fundingMethod === 'bs') ? 'Bs' : currency,
+                destinationCurrency: (selectedRoute === 'us_to_bolivia') ? 'Bs' : (selectedRoute === 'bolivia_to_exterior' ? 'USDT' : currency),
+                beneficiaryId: selectedSupplier?.id || null,
+                amountConverted: Number(amount),
+                exchangeRate: (selectedRoute === 'bolivia_to_exterior' || selectedRoute === 'us_to_bolivia') ? exchangeRateBs : 1,
+                feeTotal: calculatedFeeValue,
+                metadata
+            })
+
+            if (orderErr) throw orderErr
+            setCurrentOrderId(order.id)
+
+            // 4. Upload Supporting Document (Factura/Proforma) if present
+            if (supportDocument) {
+                await uploadOrderEvidence(order.id, supportDocument, 'evidence_url')
+            }
+
+            // 5. Post-Creation Logic
+            if (selectedRoute === 'bolivia_to_exterior') {
+                // Show instructions based on funding method
+                setWaitingForEvidence(true)
+                // If crypto funding, status is waiting_deposit too (waiting for hash)
+                await supabase.from('payment_orders').update({ status: 'waiting_deposit' }).eq('id', order.id)
+            } else if (selectedRoute === 'us_to_bolivia') {
+                if (qrFile) {
+                    await uploadOrderEvidence(order.id, qrFile, 'evidence_url')
+                }
+                await supabase.from('payment_orders').update({ status: 'waiting_deposit' }).eq('id', order.id)
+            } else {
+                // Auto-complete or advance other automated flows
+                await supabase.from('payment_orders').update({ status: 'completed' }).eq('id', order.id)
+                if (selectedRoute === 'crypto_to_crypto') resetFlow()
+            }
+
             fetchPaymentsData()
         } catch (err: any) {
             setError(err.message)
@@ -178,8 +302,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
     const translateType = (type: string) => {
         const types: any = {
-            'ACH_to_crypto': 'Banco (EE.UU.) a Crypto',
-            'crypto_to_crypto': 'Crypto a Crypto',
+            'ACH_to_crypto': 'Banco (EE.UU.) a Cripto',
+            'crypto_to_crypto': 'Cripto a Cripto',
             'incoming_transfer': 'Depósito USDT'
         }
         return types[type] || type.replace(/_/g, ' ')
@@ -230,30 +354,45 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
             <AnimatePresence mode="wait">
                 {selectedRoute === null ? (
                     <motion.div key="selector" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                        <h3 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>¿Qué quieres hacer?</h3>
+                        <h3 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>Selecciona una Ruta de Pago</h3>
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
                             gap: '1rem'
                         }}>
                             <div
-                                onClick={() => setSelectedRoute('bank_to_crypto')}
+                                onClick={() => setSelectedRoute('bolivia_to_exterior')}
                                 className="premium-card clickable-card"
                                 style={{
                                     cursor: 'pointer',
-                                    border: '1px solid transparent',
-                                    transition: 'all 0.2s',
-                                    padding: '2.5rem',
+                                    padding: '2rem',
                                     textAlign: 'center',
-                                    background: '#ffffff'
+                                    background: '#ffffff',
+                                    border: '1px solid #E2E8F0'
                                 }}
                             >
-                                <div style={{ width: '80px', height: '80px', margin: '0 auto 1.5rem', background: '#fff', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <img src="/assets/branding/icon_bank_to_crypto.png" alt="Banco a Cripto" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                </div>
-                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Banco (EE.UU.) a Cripto</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                                    Recibe transferencias bancarias desde Estados Unidos y conviértelas automáticamente en stablecoins.
+                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🇧🇴</div>
+                                <h4 style={{ margin: 0, fontWeight: 700 }}>Pagar al exterior</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                    Envía Bs a cuentas bancarias internacionales.
+                                </p>
+                            </div>
+
+                            <div
+                                onClick={() => setSelectedRoute('us_to_wallet')}
+                                className="premium-card clickable-card"
+                                style={{
+                                    cursor: 'pointer',
+                                    padding: '2rem',
+                                    textAlign: 'center',
+                                    background: '#ffffff',
+                                    border: '1px solid #E2E8F0'
+                                }}
+                            >
+                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🇺🇸</div>
+                                <h4 style={{ margin: 0, fontWeight: 700 }}>Recibir desde EE.UU.</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                    Recibe USD en tu billetera como USDC/USDT.
                                 </p>
                             </div>
 
@@ -262,54 +401,34 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                 className="premium-card clickable-card"
                                 style={{
                                     cursor: 'pointer',
-                                    border: '1px solid transparent',
-                                    transition: 'all 0.2s',
-                                    padding: '2.5rem',
+                                    padding: '2rem',
                                     textAlign: 'center',
-                                    background: '#ffffff'
+                                    background: '#ffffff',
+                                    border: '1px solid #E2E8F0'
                                 }}
                             >
-                                <div style={{ width: '80px', height: '80px', margin: '0 auto 1.5rem', background: '#fff', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <img src="/assets/branding/icon_crypto_to_crypto.png" alt="Wallet a Wallet" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                </div>
-                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Cripto a Cripto</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                                    Recibe pagos desde otras billeteras o plataformas cripto directamente en tu cuenta Guira.
+                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
+                                <h4 style={{ margin: 0, fontWeight: 700 }}>Enviar cripto</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                    Transferencias rápidas entre redes.
                                 </p>
                             </div>
 
                             <div
-                                onClick={() => setSelectedRoute('crypto_to_bank')}
+                                onClick={() => setSelectedRoute('us_to_bolivia')}
                                 className="premium-card clickable-card"
                                 style={{
                                     cursor: 'pointer',
-                                    border: '1px solid transparent',
-                                    transition: 'all 0.2s',
-                                    padding: '2.5rem',
+                                    padding: '2rem',
                                     textAlign: 'center',
-                                    background: '#ffffff'
+                                    background: '#ffffff',
+                                    border: '1px solid #E2E8F0'
                                 }}
                             >
-                                <div style={{
-                                    width: '80px',
-                                    height: '80px',
-                                    margin: '0 auto 1.5rem',
-                                    background: 'linear-gradient(135deg, #0052FF 0%, #1E4A8C 100%)',
-                                    borderRadius: '24px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#fff',
-                                    boxShadow: '0 10px 20px -5px rgba(0, 82, 255, 0.3)',
-                                    position: 'relative',
-                                    overflow: 'hidden'
-                                }}>
-                                    <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at top left, rgba(255,255,255,0.2) 0%, transparent 70%)' }} />
-                                    <Globe size={40} />
-                                </div>
-                                <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Enviar dinero a un banco</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                                    Convierte tus activos digitales y envía el dinero a cuentas bancarias vía ACH o Wire.
+                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚀</div>
+                                <h4 style={{ margin: 0, fontWeight: 700 }}>Recibir en Bolivia</h4>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                                    Liquida tus USD/USDC directamente en tu banco.
                                 </p>
                             </div>
                         </div>
@@ -318,9 +437,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                     <motion.div key="form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="premium-card" style={{ background: '#F8FAFC' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                             <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
-                                {selectedRoute === 'bank_to_crypto' && 'Recibir fondos desde Banco'}
-                                {selectedRoute === 'crypto_to_crypto' && 'Recibir fondos desde Wallet'}
-                                {selectedRoute === 'crypto_to_bank' && 'Enviar fondos a Banco'}
+                                {selectedRoute === 'bolivia_to_exterior' && 'Pagar al exterior'}
+                                {selectedRoute === 'us_to_wallet' && 'Recibir desde EE.UU.'}
+                                {selectedRoute === 'crypto_to_crypto' && 'Enviar cripto'}
+                                {selectedRoute === 'us_to_bolivia' && 'Recibir en Bolivia'}
                             </h4>
                             <button onClick={resetFlow} style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}>
                                 Volver atrás
@@ -334,213 +454,524 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                         )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                            {/* ROUTE 1: BANK TO CRYPTO */}
-                            {selectedRoute === 'bank_to_crypto' && (
-                                <>
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>1. Red donde recibirás los fondos</label>
-                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                                            Tu wallet debe ser compatible con esta red.
-                                        </p>
-                                        <select value={receiveNetwork} onChange={e => setReceiveNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
-                                            <option value="base">Base</option>
-                                            <option value="polygon">Polygon</option>
-                                            <option value="arbitrum">Arbitrum</option>
-                                            <option value="solana">Solana</option>
-                                            <option value="ethereum">Ethereum</option>
-                                        </select>
+                            {waitingForEvidence && (
+                                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ background: '#FFFBEB', border: '1px solid #FEF3C7', padding: '2rem', borderRadius: '16px', textAlign: 'center' }}>
+                                    <Clock size={48} color="#D97706" style={{ marginBottom: '1rem' }} />
+                                    <h3 style={{ margin: 0, color: '#92400E' }}>Instrucciones del Riel PSAV</h3>
+                                    <p style={{ fontSize: '0.9rem', color: '#B45309', marginTop: '0.5rem' }}>
+                                        Realiza el depósito directamente en el riel financiero externo y adjunta el comprobante para documentar la operación.
+                                    </p>
+
+                                    <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', margin: '1.5rem 0', textAlign: 'left', fontSize: '0.9rem', border: '1px solid #FEF3C7' }}>
+                                        <div style={{ marginBottom: '0.5rem' }}><b>Banco:</b> Mercantil Santa Cruz</div>
+                                        <div style={{ marginBottom: '0.5rem' }}><b>Cuenta Bs:</b> 401-2345678-9</div>
+                                        <div style={{ marginBottom: '0.5rem' }}><b>Nombre:</b> GUIRA PASV</div>
+                                        <div><b>Monto a depositar:</b> <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{amountBs} Bs</span></div>
                                     </div>
 
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>2. Moneda de llegada</label>
-                                        <select value={clientStablecoin} onChange={e => setClientStablecoin(e.target.value)} style={{ padding: '0.75rem' }}>
-                                            {networkAssets[receiveNetwork]?.map(asset => (
-                                                <option key={asset} value={asset}>{asset} (Dólar Digital)</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>3. Tu dirección de wallet en {receiveNetwork.toUpperCase()}</label>
-                                        <input
-                                            placeholder="Ingresa la dirección de destino 0x..."
-                                            value={clientCryptoAddress}
-                                            onChange={e => setClientCryptoAddress(e.target.value)}
-                                            style={{ padding: '0.75rem' }}
-                                        />
-                                        <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '0.75rem', borderRadius: '8px', marginTop: '0.5rem', fontSize: '0.8rem', display: 'flex', gap: '0.5rem' }}>
-                                            <Shield size={16} color="var(--primary)" />
-                                            <span>Te proporcionaremos una cuenta bancaria dedicada para que el banco envíe los fondos a esta dirección.</span>
+                                    <div className="input-group" style={{ textAlign: 'left' }}>
+                                        <label style={{ fontWeight: 700 }}>Adjuntar Comprobante (Imagen/PDF)</label>
+                                        <div style={{ border: '2px dashed #D1D5DB', padding: '2rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', background: '#F9FAFB', cursor: 'pointer' }} onClick={() => document.getElementById('evidence_upload')?.click()}>
+                                            <Upload size={24} color="#9CA3AF" />
+                                            <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>{evidenceFile ? evidenceFile.name : 'Haz clic para subir comprobante'}</span>
+                                            <input id="evidence_upload" type="file" style={{ display: 'none' }} onChange={e => setEvidenceFile(e.target.files?.[0] || null)} />
                                         </div>
                                     </div>
-                                </>
+
+                                    <button
+                                        onClick={handleUploadEvidence}
+                                        disabled={!evidenceFile || loading}
+                                        className="btn-primary"
+                                        style={{ width: '100%', marginTop: '1.5rem', background: '#D97706', borderColor: '#D97706' }}
+                                    >
+                                        {loading ? 'Procesando...' : 'Notificar Depósito al Riel'}
+                                    </button>
+                                </motion.div>
                             )}
 
-                            {/* ROUTE 2: CRYPTO TO CRYPTO */}
-                            {selectedRoute === 'crypto_to_crypto' && (
+                            {!waitingForEvidence && (
                                 <>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Red donde recibirás el dinero</label>
-                                            <select value={receiveNetwork} onChange={e => setReceiveNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
-                                                <option value="base">Base 🔵</option>
-                                                <option value="solana">Solana ◎</option>
-                                                <option value="polygon">Polygon 🟣</option>
-                                                <option value="arbitrum">Arbitrum 💙</option>
-                                                <option value="ethereum">Ethereum ⟠</option>
-                                            </select>
+                                    {/* Rail Selection & Disclaimer */}
+                                    <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                                        <div style={{ background: '#EFF6FF', padding: '1rem', borderRadius: '12px', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                                            💡 <b>Aviso:</b> {selectedRoute === 'bolivia_to_exterior' ? 'Este pago se procesa a través de un operador local autorizado (Riel PSAV).' : 'Guira coordina y documenta esta operación. El movimiento de fondos se realiza a través del riel indicado.'}
                                         </div>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Red desde donde se enviará</label>
-                                            <select value={sendNetwork} onChange={e => setSendNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
-                                                <option value="ethereum">Ethereum ⟠</option>
-                                                <option value="solana">Solana ◎</option>
-                                                <option value="base">Base 🔵</option>
-                                                <option value="polygon">Polygon 🟣</option>
-                                                <option value="arbitrum">Arbitrum 💙</option>
-                                            </select>
-                                        </div>
-                                    </div>
 
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>¿Qué moneda quieres recibir?</label>
-                                        <select value={clientStablecoin} onChange={e => setClientStablecoin(e.target.value)} style={{ padding: '0.75rem' }}>
-                                            {// Intersection of supported assets if complex, but here we just filter by destination
-                                                networkAssets[receiveNetwork]?.map(asset => (
-                                                    <option key={asset} value={asset}>{asset}</option>
-                                                ))
-                                            }
-                                        </select>
-                                    </div>
-
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>Tu dirección de wallet (Recibo)</label>
-                                        <input
-                                            placeholder="Ingresa tu dirección de destino 0x..."
-                                            value={clientCryptoAddress}
-                                            onChange={e => setClientCryptoAddress(e.target.value)}
-                                            style={{ padding: '0.75rem' }}
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            {/* ROUTE 3: CRYPTO TO BANK (Refined for Suppliers) */}
-                            {selectedRoute === 'crypto_to_bank' && (
-                                <>
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>Agenda de Proveedores</label>
-                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                            <select
-                                                style={{ flex: 1, padding: '0.75rem' }}
-                                                value={selectedSupplier?.id || ''}
-                                                onChange={(e) => {
-                                                    const s = suppliers.find(sup => sup.id === e.target.value)
-                                                    setSelectedSupplier(s)
-                                                    if (s) {
-                                                        setDestinationId(s.payment_method === 'bank' ? s.bank_details?.account : s.crypto_details?.address)
-                                                    }
-                                                }}
-                                            >
-                                                <option value="">-- Seleccionar Proveedor --</option>
-                                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.country})</option>)}
-                                            </select>
-                                            <button onClick={() => setIsAddingSupplier(true)} className="btn-secondary" style={{ padding: '0.5rem' }}>+</button>
-                                        </div>
-                                    </div>
-
-                                    {isAddingSupplier ? (
-                                        <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                                            <h5 style={{ marginTop: 0 }}>Registrar Nuevo Proveedor</h5>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                                <input placeholder="Nombre / Empresa" onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
-                                                <select onChange={e => setNewSupplier({ ...newSupplier, country: e.target.value })}>
-                                                    <option value="US">Estados Unidos</option>
-                                                    <option value="Bolivia">Bolivia</option>
-                                                    <option value="Other">Resto del Mundo</option>
-                                                </select>
-                                                <button onClick={handleAddSupplier} className="btn-primary" style={{ fontSize: '0.8rem' }}>Guardar Beneficiario</button>
-                                                <button onClick={() => setIsAddingSupplier(false)} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Cancelar</button>
+                                        {(selectedRoute === 'us_to_bolivia') && (
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Riel de Liquidación / Pago</label>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                    <button
+                                                        onClick={() => setProcessingRail('PSAV')}
+                                                        style={{
+                                                            padding: '1rem',
+                                                            borderRadius: '12px',
+                                                            border: `2px solid ${processingRail === 'PSAV' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: '#fff',
+                                                            cursor: 'pointer',
+                                                            textAlign: 'left'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>PSAV</div>
+                                                        <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Riel operativo local</div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setProcessingRail('SWIFT')}
+                                                        style={{
+                                                            padding: '1rem',
+                                                            borderRadius: '12px',
+                                                            border: `2px solid ${processingRail === 'SWIFT' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: '#fff',
+                                                            cursor: 'pointer',
+                                                            textAlign: 'left'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>SWIFT</div>
+                                                        <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Transferencia bancaria</div>
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : null}
+                                        )}
+                                        {selectedRoute === 'us_to_wallet' && (
+                                            <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '12px', fontWeight: 600 }}>
+                                                Riel: ACH (Automático)
+                                            </div>
+                                        )}
+                                        {selectedRoute === 'crypto_to_crypto' && (
+                                            <div style={{ padding: '1rem', background: '#F8FAFC', borderRadius: '12px', fontWeight: 600 }}>
+                                                Riel: Red Digital (Blockchain)
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* ROUTE 1: BOLIVIA AL EXTERIOR */}
+                                    {selectedRoute === 'bolivia_to_exterior' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                            {/* Paso 1: Fondeo */}
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Paso 1: ¿Con qué pagarás?</label>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                    <button
+                                                        onClick={() => setFundingMethod('bs')}
+                                                        style={{
+                                                            padding: '1.25rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'bs' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: fundingMethod === 'bs' ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>Bolivianos (Bs)</div>
+                                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Vía riel PSAV local</div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setFundingMethod('crypto')}
+                                                        style={{
+                                                            padding: '1.25rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: fundingMethod === 'crypto' ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700, fontSize: '1rem' }}>USDT / USDC</div>
+                                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Vía Red Digital</div>
+                                                    </button>
+                                                </div>
+                                            </div>
 
-                                    {selectedSupplier?.country === 'Bolivia' && (
-                                        <div style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--success)' }}>
-                                            <label style={{ fontWeight: 700, color: 'var(--success)', display: 'block', marginBottom: '0.5rem' }}>Calculadora Bolivia (Bs → USDT)</label>
-                                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                            {/* Paso 2: Envío */}
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Paso 2: ¿Cómo se enviará al exterior?</label>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                    <button
+                                                        onClick={() => setDeliveryMethod('swift')}
+                                                        className={`btn-secondary ${deliveryMethod === 'swift' ? 'active' : ''}`}
+                                                        style={{ justifyContent: 'flex-start', padding: '1rem', border: `2px solid ${deliveryMethod === 'swift' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff' }}
+                                                    >
+                                                        🌐 Transferencia Bancaria Internacional (SWIFT)
+                                                    </button>
+
+                                                    {(!selectedSupplier || selectedSupplier.country === 'US') && (
+                                                        <button
+                                                            onClick={() => setDeliveryMethod('ach')}
+                                                            className={`btn-secondary ${deliveryMethod === 'ach' ? 'active' : ''}`}
+                                                            style={{ justifyContent: 'flex-start', padding: '1rem', border: `2px solid ${deliveryMethod === 'ach' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff' }}
+                                                        >
+                                                            🇺🇸 Transferencia Bancaria en EE.UU. (ACH)
+                                                        </button>
+                                                    )}
+
+                                                    {(!selectedSupplier || selectedSupplier.payment_method === 'crypto') && (
+                                                        <button
+                                                            onClick={() => setDeliveryMethod('crypto')}
+                                                            className={`btn-secondary ${deliveryMethod === 'crypto' ? 'active' : ''}`}
+                                                            style={{ justifyContent: 'flex-start', padding: '1rem', border: `2px solid ${deliveryMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff' }}
+                                                        >
+                                                            ⚡ Transferencia en Cripto (USDT / USDC)
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '0.5rem 0' }} />
+
+                                            {/* Motivo y Monto */}
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Motivo del pago (Obligatorio)</label>
                                                 <input
-                                                    type="number"
-                                                    placeholder="Monto en Bs"
-                                                    value={amountBs}
-                                                    onChange={e => {
-                                                        setAmountBs(e.target.value)
-                                                        setAmount((Number(e.target.value) / exchangeRateBs).toFixed(2))
-                                                    }}
-                                                    style={{ flex: 1 }}
+                                                    placeholder="Ej: Pago de factura comercial, Honorarios, Mercadería..."
+                                                    value={paymentReason}
+                                                    onChange={e => setPaymentReason(e.target.value)}
+                                                    required
                                                 />
-                                                <span>=</span>
-                                                <div style={{ fontWeight: 700, fontSize: '1.2rem' }}>{amount} USDT</div>
                                             </div>
-                                            <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.8 }}>T.C. Aplicado: 1 USDT = {exchangeRateBs} Bs</p>
+
+                                            {fundingMethod === 'bs' ? (
+                                                <div style={{ background: '#F0FDFA', padding: '1.25rem', borderRadius: '12px', border: '1px solid #CCFBF1' }}>
+                                                    <label style={{ fontWeight: 700, color: '#0F766E', display: 'block', marginBottom: '0.5rem' }}>Monto en Bolivianos</label>
+                                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                        <input
+                                                            type="number"
+                                                            placeholder="Monto Bs"
+                                                            value={amountBs}
+                                                            onChange={e => {
+                                                                setAmountBs(e.target.value)
+                                                                setAmount((Number(e.target.value) / exchangeRateBs).toFixed(2))
+                                                            }}
+                                                            style={{ flex: 1, fontSize: '1.1rem', fontWeight: 600 }}
+                                                        />
+                                                        <span style={{ fontSize: '1.2rem' }}>≈</span>
+                                                        <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#115E59' }}>{amount || '0.00'} USDT</div>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: '#134E4A' }}>T.C. Referencial: 1 USDT = {exchangeRateBs} Bs</p>
+                                                </div>
+                                            ) : (
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Monto a Enviar (USDT / USDC)</label>
+                                                    <input
+                                                        type="number"
+                                                        placeholder="0.00"
+                                                        value={amount}
+                                                        onChange={e => setAmount(e.target.value)}
+                                                        style={{ fontSize: '1.1rem', fontWeight: 600 }}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Datos del Beneficiario Dinámicos */}
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Proveedor / Beneficiario</label>
+                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                    <select
+                                                        style={{ flex: 1, padding: '0.75rem' }}
+                                                        value={selectedSupplier?.id || ''}
+                                                        onChange={(e) => {
+                                                            const s = suppliers.find(sup => sup.id === e.target.value)
+                                                            setSelectedSupplier(s)
+                                                            if (s?.country === 'US') setDeliveryMethod('ach')
+                                                            else if (s?.payment_method === 'crypto') setDeliveryMethod('crypto')
+                                                            else setDeliveryMethod('swift')
+                                                        }}
+                                                    >
+                                                        <option value="">-- Seleccionar de Agenda --</option>
+                                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.country})</option>)}
+                                                    </select>
+                                                    <button onClick={() => setIsAddingSupplier(true)} className="btn-secondary">+</button>
+                                                </div>
+                                            </div>
+
+                                            {isAddingSupplier && (
+                                                <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                    <h5 style={{ marginTop: 0 }}>Registrar Nuevo Proveedor</h5>
+                                                    <input placeholder="Nombre / Empresa" onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                                        <select onChange={e => setNewSupplier({ ...newSupplier, country: e.target.value })}>
+                                                            <option value="US">Estados Unidos</option>
+                                                            <option value="Bolivia">Bolivia</option>
+                                                            <option value="Other">Resto del Mundo</option>
+                                                        </select>
+                                                        <select onChange={e => setNewSupplier({ ...newSupplier, payment_method: e.target.value as any })}>
+                                                            <option value="bank">Banco (SWIFT/ACH)</option>
+                                                            <option value="crypto">Cripto (USDT/USDC)</option>
+                                                        </select>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                        <button onClick={handleAddSupplier} className="btn-primary" style={{ flex: 1, fontSize: '0.8rem' }}>Guardar</button>
+                                                        <button onClick={() => setIsAddingSupplier(false)} className="btn-secondary" style={{ flex: 1, fontSize: '0.8rem' }}>Cancelar</button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {deliveryMethod === 'swift' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                                    <h5 style={{ margin: 0 }}>Datos de Cuenta Bancaria (SWIFT)</h5>
+                                                    <input placeholder="Nombre del Banco" value={swiftDetails.bankName} onChange={e => setSwiftDetails({ ...swiftDetails, bankName: e.target.value })} />
+                                                    <input placeholder="Dirección del Banco (Calle, Ciudad, País)" value={swiftDetails.bankAddress} onChange={e => setSwiftDetails({ ...swiftDetails, bankAddress: e.target.value })} />
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                        <input placeholder="SWIFT / BIC" value={swiftDetails.swiftCode} onChange={e => setSwiftDetails({ ...swiftDetails, swiftCode: e.target.value })} />
+                                                        <input placeholder="IBAN o Account Number" value={swiftDetails.iban} onChange={e => setSwiftDetails({ ...swiftDetails, iban: e.target.value })} />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {deliveryMethod === 'ach' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                                    <h5 style={{ margin: 0 }}>Cuenta Bancaria en EE.UU. (ACH)</h5>
+                                                    <input placeholder="Nombre del Banco" value={achDetails.bankName} onChange={e => setAchDetails({ ...achDetails, bankName: e.target.value })} />
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                        <input placeholder="Routing Number (9 dígitos)" value={achDetails.routingNumber} onChange={e => setAchDetails({ ...achDetails, routingNumber: e.target.value })} />
+                                                        <input placeholder="Account Number" value={achDetails.accountNumber} onChange={e => setAchDetails({ ...achDetails, accountNumber: e.target.value })} />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {deliveryMethod === 'crypto' && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                                    <h5 style={{ margin: 0 }}>Dirección de Billetera</h5>
+                                                    <input placeholder="Dirección USDT / USDC" value={cryptoDestination.address} onChange={e => setCryptoDestination({ ...cryptoDestination, address: e.target.value })} />
+                                                    <select value={cryptoDestination.network} onChange={e => setCryptoDestination({ ...cryptoDestination, network: e.target.value })}>
+                                                        <option value="ethereum">Ethereum (ERC-20)</option>
+                                                        <option value="base">Base</option>
+                                                        <option value="polygon">Polygon</option>
+                                                        <option value="solana">Solana</option>
+                                                        <option value="arbitrum">Arbitrum</option>
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Documento de Respaldo (Factura / Proforma)</label>
+                                                <div
+                                                    style={{ border: '2px dashed #D1D5DB', padding: '1.5rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', background: '#F9FAFB', cursor: 'pointer' }}
+                                                    onClick={() => document.getElementById('support_doc_upload')?.click()}
+                                                >
+                                                    <Upload size={20} color="#9CA3AF" />
+                                                    <span style={{ fontSize: '0.85rem', color: '#6B7280' }}>
+                                                        {supportDocument ? <b>✅ {supportDocument.name}</b> : 'Haz clic para subir (PDF o Imagen)'}
+                                                    </span>
+                                                    <input id="support_doc_upload" type="file" style={{ display: 'none' }} onChange={e => setSupportDocument(e.target.files?.[0] || null)} />
+                                                </div>
+                                                <p style={{ fontSize: '0.7rem', color: '#6B7280', marginTop: '0.4rem' }}>
+                                                    ⚠️ Este documento respalda el motivo del pago y será incluido en el reporte final.
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Monto a enviar (USDC/USDT)</label>
-                                            <input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} style={{ padding: '0.75rem' }} />
-                                        </div>
-                                        <div className="input-group">
-                                            <label style={{ fontWeight: 700 }}>Método de Salida</label>
-                                            <select value={fiatMethod} onChange={e => setFiatMethod(e.target.value as any)} style={{ padding: '0.75rem' }}>
-                                                <option value="ach">ACH (EE.UU.)</option>
-                                                <option value="wire">Wire (Internacional)</option>
-                                                <option value="crypto" disabled={selectedSupplier?.country !== 'Bolivia'}>Crypto / USDT</option>
-                                            </select>
-                                        </div>
-                                    </div>
+                                    {/* ROUTE 2: EE.UU. A BILLETERA */}
+                                    {selectedRoute === 'us_to_wallet' && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                            <div style={{ background: '#F0F9FF', padding: '1.5rem', borderRadius: '16px', border: '1px solid #BAE6FD' }}>
+                                                <h4 style={{ marginTop: 0, color: '#0369A1' }}>Instrucciones de Fondeo (USD)</h4>
+                                                <p style={{ fontSize: '0.9rem', color: '#0C4A6E' }}>Configura la billetera donde quieres recibir tus fondos. Se te asignarán instrucciones bancarias de EE.UU. vinculadas a esta dirección.</p>
+                                            </div>
 
-                                    {amount && feeConfig && (
-                                        <div style={{ background: '#F1F5F9', padding: '1rem', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span>Monto enviado:</span>
-                                                <span>{amount} {currency}</span>
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Dirección de Billetera (Donde recibes)</label>
+                                                <input
+                                                    placeholder="0x... o Dirección de Red..."
+                                                    value={clientCryptoAddress}
+                                                    onChange={e => setClientCryptoAddress(e.target.value)}
+                                                    style={{ padding: '0.75rem' }}
+                                                />
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--error)' }}>
-                                                <span>Fee Guira ({feeConfig.value}{feeConfig.fee_type === 'percentage' ? '%' : ' ' + feeConfig.currency}):</span>
-                                                <span>- {calculatedFeeValue.toFixed(2)} {currency}</span>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Recibir Moneda</label>
+                                                    <select value={clientStablecoin} onChange={e => setClientStablecoin(e.target.value)} style={{ padding: '0.75rem' }}>
+                                                        <option value="USDC">USDC (Recomendado)</option>
+                                                        <option value="USDT">USDT</option>
+                                                    </select>
+                                                </div>
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Red de Destino</label>
+                                                    <select value={receiveNetwork} onChange={e => setReceiveNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
+                                                        <option value="base">Base</option>
+                                                        <option value="ethereum">Ethereum</option>
+                                                        <option value="polygon">Polygon</option>
+                                                        <option value="solana">Solana</option>
+                                                        <option value="arbitrum">Arbitrum</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid #CBD5E1', paddingTop: '0.5rem' }}>
-                                                <span>Monto neto que recibe:</span>
+
+                                            <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                                                <p style={{ margin: 0, color: 'var(--text-muted)' }}>
+                                                    <Clock size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                                                    Al completar la solicitud, se te asignarán instrucciones bancarias únicas. Los fondos se acreditan automáticamente en 1-3 días hábiles.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* ROUTE 3: CRIPTO A CRIPTO */}
+                                    {selectedRoute === 'crypto_to_crypto' && (
+                                        <>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Monto a enviar</label>
+                                                    <input type="number" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} style={{ padding: '0.75rem' }} />
+                                                </div>
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Red de Envío</label>
+                                                    <select value={sendNetwork} onChange={e => setSendNetwork(e.target.value)} style={{ padding: '0.75rem' }}>
+                                                        <option value="ethereum">Ethereum</option>
+                                                        <option value="base">Base</option>
+                                                        <option value="polygon">Polygon</option>
+                                                        <option value="solana">Solana</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Dirección de Billetera Destino</label>
+                                                <input
+                                                    placeholder="0x... o Dirección de Red..."
+                                                    value={destinationId}
+                                                    onChange={e => setDestinationId(e.target.value)}
+                                                    style={{ padding: '0.75rem' }}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* ROUTE 4: EE.UU. A BOLIVIA */}
+                                    {selectedRoute === 'us_to_bolivia' && (
+                                        <>
+                                            <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--primary)' }}>
+                                                <label style={{ fontWeight: 700, color: 'var(--primary)', display: 'block', marginBottom: '0.5rem' }}>Calculadora (USD → Bs)</label>
+                                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                                    <input
+                                                        type="number"
+                                                        placeholder="Monto en USD"
+                                                        value={amount}
+                                                        onChange={e => {
+                                                            setAmount(e.target.value)
+                                                            setAmountBs((Number(e.target.value) * exchangeRateBs).toFixed(2))
+                                                        }}
+                                                        style={{ flex: 1 }}
+                                                    />
+                                                    <span>=</span>
+                                                    <div style={{ fontWeight: 700, fontSize: '1.2rem' }}>{amountBs || '0.00'} Bs</div>
+                                                </div>
+                                                <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', opacity: 0.8 }}>T.C. Aplicado: 1 USD = {exchangeRateBs} Bs</p>
+                                            </div>
+
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Método de Recepción en Bolivia</label>
+                                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                                    <label style={{ flex: 1, padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '12px', cursor: 'pointer', background: receptionMethod === 'qr' ? 'rgba(59, 130, 246, 0.05)' : '#fff' }}>
+                                                        <input type="radio" name="reception" value="qr" checked={receptionMethod === 'qr'} onChange={() => setReceptionMethod('qr')} /> QR Bancario
+                                                    </label>
+                                                    <label style={{ flex: 1, padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '12px', cursor: 'pointer', background: receptionMethod === 'bank' ? 'rgba(59, 130, 246, 0.05)' : '#fff' }}>
+                                                        <input type="radio" name="reception" value="bank" checked={receptionMethod === 'bank'} onChange={() => setReceptionMethod('bank')} /> Cuenta Bancaria
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            {receptionMethod === 'qr' && (
+                                                <div className="input-group">
+                                                    <label style={{ fontWeight: 700 }}>Subir Imagen QR (Obligatorio)</label>
+                                                    <input type="file" onChange={e => setQrFile(e.target.files?.[0] || null)} />
+                                                </div>
+                                            )}
+
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Datos de Cuenta / Referencia</label>
+                                                <input
+                                                    placeholder="Número de cuenta bancaria o nombre del QR..."
+                                                    value={destinationId}
+                                                    onChange={e => setDestinationId(e.target.value)}
+                                                    style={{ padding: '0.75rem' }}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {amount && feeConfig && !['us_to_wallet'].includes(selectedRoute || '') && (
+                                        <div style={{ background: '#F1F5F9', padding: '1.5rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '1rem', border: '1px solid #CBD5E1' }}>
+                                            <h5 style={{ margin: 0, fontSize: '0.9rem', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Revisión de la Operación</h5>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.9rem' }}>
+                                                <span style={{ color: '#64748B' }}>Proveedor:</span>
+                                                <span style={{ fontWeight: 600, textAlign: 'right' }}>{selectedSupplier?.name || 'No seleccionado'} ({selectedSupplier?.country || '-'})</span>
+
+                                                <span style={{ color: '#64748B' }}>Motivo:</span>
+                                                <span style={{ fontWeight: 600, textAlign: 'right' }}>{paymentReason || '-'}</span>
+
+                                                <span style={{ color: '#64748B' }}>Documento:</span>
+                                                <span style={{ fontWeight: 600, textAlign: 'right', color: 'var(--primary)' }}>{supportDocument ? supportDocument.name : 'No adjunto'}</span>
+                                            </div>
+
+                                            <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem' }}>
+                                                    <span style={{ color: '#64748B' }}>Monto {fundingMethod === 'bs' ? 'Origen' : 'enviado'}:</span>
+                                                    <span style={{ fontWeight: 600 }}>{fundingMethod === 'bs' ? amountBs + ' Bs' : amount + ' ' + currency}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', color: 'var(--error)' }}>
+                                                    <span style={{ color: '#64748B' }}>Fee Guira:</span>
+                                                    <span>- {calculatedFeeValue.toFixed(2)} {currency}</span>
+                                                </div>
+                                                {fundingMethod === 'bs' && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                        <span style={{ color: '#64748B' }}>Tipo de Cambio Applied:</span>
+                                                        <span>1 USDT = {exchangeRateBs} Bs</span>
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748B' }}>
+                                                    <span>Método de envío:</span>
+                                                    <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{deliveryMethod}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#64748B' }}>
+                                                    <span>Riel operativo:</span>
+                                                    <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{fundingMethod === 'bs' ? 'PSAV (Local)' : 'Digital Network'}</span>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, borderTop: '2px solid #CBD5E1', paddingTop: '1rem', fontSize: '1.1rem', color: 'var(--success)' }}>
+                                                <span>Recibirá el proveedor:</span>
                                                 <span>{netAmountValue.toFixed(2)} {currency}</span>
                                             </div>
+
+                                            <div style={{ fontSize: '0.8rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.4rem', borderTop: '1px solid #E2E8F0', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                                                {selectedRoute === 'bolivia_to_exterior'
+                                                    ? 'Guira coordina y documenta esta operación. El movimiento de fondos se realiza a través del riel indicado.'
+                                                    : 'Guira facilita la documentación y orquestación de este flujo financiero.'}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                <Clock size={14} /> Tiempo estimado: {fundingMethod === 'crypto' ? 'Minutos' : '1-3 días hábiles'}
+                                            </div>
                                         </div>
                                     )}
 
-                                    <div className="input-group">
-                                        <label style={{ fontWeight: 700 }}>ID / Wallet de Destino</label>
-                                        <input
-                                            placeholder="Cuenta bancaria o Address..."
-                                            value={destinationId}
-                                            onChange={e => setDestinationId(e.target.value)}
-                                            style={{ padding: '0.75rem' }}
-                                        />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+                                        {isConfirmed ? (
+                                            <div style={{ padding: '1rem', background: '#FFF7ED', border: '1px solid #FFEDD5', borderRadius: '12px', fontSize: '0.85rem', color: '#9A3412' }}>
+                                                ⚠️ <b>Confirma los datos:</b> Al hacer clic en el botón de abajo, se creará la Orden de Pago obligatoria y se te mostrarán las instrucciones del riel financiero.
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: '0.8rem', color: '#64748B', textAlign: 'center' }}>
+                                                Revisa los detalles antes de solicitar la creación de la orden.
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', gap: '1rem' }}>
+                                            <button
+                                                onClick={handleExecuteOperation}
+                                                disabled={
+                                                    loading ||
+                                                    (selectedRoute === 'bolivia_to_exterior' && (
+                                                        !selectedSupplier || !paymentReason || !supportDocument || !amount ||
+                                                        (deliveryMethod === 'swift' && (!swiftDetails.bankName || !swiftDetails.swiftCode || !swiftDetails.iban)) ||
+                                                        (deliveryMethod === 'ach' && (!achDetails.bankName || !achDetails.routingNumber || !achDetails.accountNumber)) ||
+                                                        (deliveryMethod === 'crypto' && !cryptoDestination.address)
+                                                    )) ||
+                                                    (selectedRoute === 'us_to_bolivia' && (!amount || !destinationId || (receptionMethod === 'qr' && !qrFile))) ||
+                                                    (selectedRoute === 'us_to_wallet' && !clientCryptoAddress)
+                                                }
+                                                className="btn-primary"
+                                                style={{ flex: 1, padding: '1rem', fontSize: '1.1rem' }}
+                                            >
+                                                {loading ? 'Procesando...' : (isConfirmed ? 'Confirmar y Crear Orden' : 'Revisar Datos')}
+                                            </button>
+                                            <button onClick={resetFlow} className="btn-secondary" style={{ flex: 0.3 }}>Cancelar</button>
+                                        </div>
                                     </div>
                                 </>
                             )}
-
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-                                <button
-                                    onClick={handleExecuteOperation}
-                                    disabled={loading || (selectedRoute !== 'crypto_to_bank' && !clientCryptoAddress) || (selectedRoute === 'crypto_to_bank' && !destinationId)}
-                                    className="btn-primary"
-                                    style={{ flex: 1 }}
-                                >
-                                    {loading ? 'Procesando...' : selectedRoute === 'crypto_to_bank' ? 'Enviar pago' : 'Recibir fondos'}
-                                </button>
-                                <button onClick={resetFlow} className="btn-secondary" style={{ flex: 0.3 }}>Cancelar</button>
-                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -548,7 +979,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
             {/* HISTORY AND LISTS (Visible when not in a flow) */}
             {selectedRoute === null && (
-                <AnimatePresence mode="wait">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                     {activeTab === 'payin' ? (
                         <motion.div key="list_payin" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                             <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Mis Instrucciones de Depósito</h3>
@@ -625,7 +1056,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
                                                                 {trans.transfer_kind === 'wallet_to_external_bank' ? 'Envío a Banco' :
                                                                     trans.transfer_kind === 'wallet_to_external_crypto' ? 'Envío a Wallet Externa' :
-                                                                        'Transferencia Interna'}
+                                                                        trans.transfer_kind === 'external_bank_to_wallet' ? 'Fondeo desde Banco' :
+                                                                            'Transferencia Interna'}
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
                                                                 {trans.business_purpose.replace(/_/g, ' ')}
@@ -646,19 +1078,20 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                         </td>
                                                         <td style={{ padding: '1.25rem' }}>
                                                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                                {trans.business_purpose === 'supplier_payment' && (
+                                                                {trans.business_purpose === 'supplier_payment' && user && (
                                                                     <button
                                                                         onClick={() => generatePaymentPDF({
                                                                             id: trans.id,
                                                                             userName: user.email || 'Usuario',
-                                                                            supplierName: trans.metadata?.supplier?.name || 'Proveedor Destino',
+                                                                            supplierName: trans.metadata?.supplier?.name || trans.metadata?.swift_details?.bankName || 'Destinatario',
                                                                             date: trans.created_at,
                                                                             amount: trans.amount,
                                                                             currency: trans.currency,
                                                                             fee: trans.fee_amount || 0,
                                                                             netAmount: trans.net_amount || trans.amount,
                                                                             exchangeRate: trans.exchange_rate,
-                                                                            type: trans.transfer_kind
+                                                                            type: trans.transfer_kind,
+                                                                            paymentReason: trans.metadata?.payment_reason
                                                                         })}
                                                                         className="btn-secondary"
                                                                         style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem' }}
@@ -680,7 +1113,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                             </div>
                         </motion.div>
                     )}
-                </AnimatePresence>
+                </div>
             )}
         </div>
     )
