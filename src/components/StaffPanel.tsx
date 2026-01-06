@@ -11,7 +11,9 @@ import {
     Plus,
     X,
     AlertTriangle,
-    Save
+    Save,
+    Upload,
+    Settings
 } from 'lucide-react'
 import { generatePaymentPDF } from '../lib/pdf'
 import { registerAuditLog } from '../lib/audit'
@@ -25,6 +27,8 @@ export const StaffPanel: React.FC = () => {
 
     // Config states
     const [fees, setFees] = useState<any[]>([])
+    const [platformSettings, setPlatformSettings] = useState<any[]>([])
+    const [uploadingQr, setUploadingQr] = useState(false)
 
     // Order processing states
     const [staffExchangeRate, setStaffExchangeRate] = useState<string>('')
@@ -76,8 +80,11 @@ export const StaffPanel: React.FC = () => {
         } else if (activeTab === 'orders') {
             query = supabase.from('payment_orders').select('*, profiles(email)').order('created_at', { ascending: false })
         } else if (activeTab === 'config') {
-            const { data } = await supabase.from('fees_config').select('*')
-            if (data) setFees(data)
+            const { data: feeData } = await supabase.from('fees_config').select('*')
+            if (feeData) setFees(feeData)
+
+            const { data: settingsData } = await supabase.from('app_settings').select('*')
+            if (settingsData) setPlatformSettings(settingsData)
             return
         }
 
@@ -135,14 +142,14 @@ export const StaffPanel: React.FC = () => {
             }
 
             if (table === 'bridge_transfers' && status === 'completed') {
-                const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).single()
+                const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).maybeSingle()
                 if (wallet) {
                     await supabase.from('ledger_entries').insert([{
                         wallet_id: wallet.id,
                         bridge_transfer_id: item.id,
                         type: item.transfer_kind.startsWith('wallet_to_') ? 'payout' : 'deposit',
                         amount: item.amount,
-                        description: `Bridge Transfer: ${item.business_purpose.replace(/_/g, ' ')}`,
+                        description: `Bridge Transfer: ${item.business_purpose?.replace(/_/g, ' ') || 'Transferencia'}`,
                         metadata: { bridge_transfer_id: item.bridge_transfer_id }
                     }])
                 }
@@ -261,6 +268,7 @@ export const StaffPanel: React.FC = () => {
     }
 
     const translateStatus = (status: string) => {
+        if (!status) return 'Estado'
         const statuses: any = {
             'submitted': 'Enviado',
             'active': 'Activo',
@@ -283,6 +291,7 @@ export const StaffPanel: React.FC = () => {
     }
 
     const translateOrderType = (type: string) => {
+        if (!type) return 'Orden'
         const types: any = {
             'BO_TO_WORLD': 'Pagar al Exterior',
             'WORLD_TO_BO': 'Recibir en Bolivia',
@@ -590,7 +599,7 @@ export const StaffPanel: React.FC = () => {
                                 {fees.map(f => (
                                     <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
                                         <div>
-                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type.replace(/_/g, ' ')}</div>
+                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type?.replace(/_/g, ' ') || 'Fee'}</div>
                                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo: {f.fee_type}</div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -606,6 +615,71 @@ export const StaffPanel: React.FC = () => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+
+                            <h3 style={{ marginTop: '3rem', marginBottom: '1.5rem' }}>Ajustes de Plataforma</h3>
+                            <div className="premium-card" style={{ background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h4 style={{ margin: 0, color: '#0369A1' }}>QR Global de Recepción (Bolivia)</h4>
+                                        <p style={{ margin: '0.5rem 0', fontSize: '0.8rem', color: '#0C4A6E' }}>
+                                            Este QR se mostrará a todos los clientes que elijan "Recibir en Bolivia".
+                                        </p>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        {platformSettings.find(s => s.key === 'bolivia_reception_qr_url')?.value ? (
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <img
+                                                    src={platformSettings.find(s => s.key === 'bolivia_reception_qr_url')?.value}
+                                                    alt="Bolivia QR"
+                                                    style={{ width: '100px', height: '100px', objectFit: 'contain', border: '1px solid #BAE6FD', borderRadius: '8px', background: '#fff' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <p style={{ fontSize: '0.75rem', color: '#0C4A6E', fontStyle: 'italic' }}>No se ha subido ningún QR.</p>
+                                        )}
+                                        <button
+                                            onClick={() => document.getElementById('global_qr_upload')?.click()}
+                                            disabled={uploadingQr}
+                                            className="btn-primary"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem' }}
+                                        >
+                                            <Upload size={16} /> {uploadingQr ? 'Subiendo...' : 'Cambiar QR'}
+                                        </button>
+                                        <input
+                                            id="global_qr_upload"
+                                            type="file"
+                                            style={{ display: 'none' }}
+                                            accept="image/*"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0]
+                                                if (!file) return
+                                                setUploadingQr(true)
+                                                try {
+                                                    const fileName = `global_bolivia_qr_${Date.now()}.${file.name.split('.').pop()}`
+                                                    const { error: uploadError } = await supabase.storage.from('platform_assets').upload(fileName, file)
+                                                    if (uploadError) throw uploadError
+
+                                                    const { data: { publicUrl } } = supabase.storage.from('platform_assets').getPublicUrl(fileName)
+
+                                                    const { error: updateError } = await supabase
+                                                        .from('app_settings')
+                                                        .upsert({ key: 'bolivia_reception_qr_url', value: publicUrl, updated_at: new Date().toISOString() })
+
+                                                    if (updateError) throw updateError
+
+                                                    const { data: settingsData } = await supabase.from('app_settings').select('*')
+                                                    if (settingsData) setPlatformSettings(settingsData)
+                                                    alert('QR actualizado con éxito.')
+                                                } catch (err: any) {
+                                                    alert('Error al subir: ' + err.message)
+                                                } finally {
+                                                    setUploadingQr(false)
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     ) : (
@@ -811,6 +885,21 @@ export const StaffPanel: React.FC = () => {
                                             </div>
                                         </div>
 
+                                        <div className="input-group">
+                                            <label style={{ fontSize: '0.7rem' }}>Comisión (%) - Deja vacío para usar global</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                placeholder="Ej: 1.5"
+                                                defaultValue={selectedItem.fee_percentage}
+                                                onChange={e => {
+                                                    const val = e.target.value === '' ? null : Number(e.target.value);
+                                                    if (isEditingMaterial) setFormContent({ ...formContent, fee_percentage: val });
+                                                    else setSelectedItem({ ...selectedItem, fee_percentage: val });
+                                                }}
+                                            />
+                                        </div>
+
                                         <h4 style={{ fontSize: '0.8rem', marginBottom: '1rem' }}>Configurar Instrucciones Bancarias</h4>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                             {(selectedItem.type === 'ACH_to_crypto' || formContent.type === 'ACH_to_crypto') && (
@@ -901,7 +990,10 @@ export const StaffPanel: React.FC = () => {
                                         ) : (
                                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                 <button
-                                                    onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', { instructions: selectedItem.instructions || {} })}
+                                                    onClick={() => handleUpdateStatus(selectedItem.id, 'payin_routes', 'active', {
+                                                        instructions: selectedItem.instructions || {},
+                                                        fee_percentage: selectedItem.fee_percentage
+                                                    })}
                                                     className="btn-primary"
                                                     style={{ flex: 1 }}
                                                 >

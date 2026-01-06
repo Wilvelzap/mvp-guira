@@ -28,6 +28,7 @@ export const ActivityLog: React.FC = () => {
     if (loading) return <div className="loading-spinner">Cargando historial...</div>
 
     const translateAction = (action: string) => {
+        if (!action) return 'Actividad'
         const actions: any = {
             'save_draft': 'Borrador Guardado',
             'guardar_borrador': 'Borrador Guardado',
@@ -75,7 +76,7 @@ export const ActivityLog: React.FC = () => {
                                     background: 'rgba(0, 82, 255, 0.05)',
                                     color: 'var(--secondary)'
                                 }}>
-                                    {log.action.includes('submit') || log.action.includes('enviar') ? <CheckCircle size={18} /> : <Info size={18} />}
+                                    {log.action?.includes('submit') || log.action?.includes('enviar') ? <CheckCircle size={18} /> : <Info size={18} />}
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>

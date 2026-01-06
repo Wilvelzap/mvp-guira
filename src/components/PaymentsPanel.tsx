@@ -15,6 +15,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const { user } = useAuth()
     const [activeTab, setActiveTab] = useState<'payin' | 'payout'>('payin')
     const [payinRoutes, setPayinRoutes] = useState<any[]>([])
+    const [platformSettings, setPlatformSettings] = useState<any[]>([])
     const [bridgeTransfers, setBridgeTransfers] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [showAdvanced, setShowAdvanced] = useState(false)
@@ -46,13 +47,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     // Bolivia Specific
     const [amountBs, setAmountBs] = useState('')
     const exchangeRateBs = 10.5 // Mock exchange rate
-    const [receptionMethod, setReceptionMethod] = useState<'qr' | 'bank'>('qr')
-    const [qrFile, setQrFile] = useState<File | null>(null)
-
     const [isConfirmed, setIsConfirmed] = useState(false)
 
-    // Step-by-Step "Pagar al exterior" states
-    const [fundingMethod, setFundingMethod] = useState<'bs' | 'crypto'>('bs')
+    // Step-by-Step "Pagar al exterior" and "Recibir en Bolivia" states
+    const [fundingMethod, setFundingMethod] = useState<'bs' | 'crypto' | 'ach' | 'wallet'>('bs')
     const [deliveryMethod, setDeliveryMethod] = useState<'swift' | 'ach' | 'crypto'>('swift')
     const [paymentReason, setPaymentReason] = useState('')
     const [supportDocument, setSupportDocument] = useState<File | null>(null)
@@ -76,6 +74,13 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
             onRouteClear?.()
         }
     }, [initialRoute])
+
+    useEffect(() => {
+        if (user) {
+            fetchPaymentsData()
+        }
+    }, [user])
+
 
     // Assets mapping per network
     const networkAssets: Record<string, string[]> = {
@@ -142,6 +147,11 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         if (allHistory) setBridgeTransfers(allHistory as any)
         if (suppliersRes.data) setSuppliers(suppliersRes.data)
         if (feeRes) setFeeConfig(feeRes)
+
+        // Fetch platform settings too
+        const { data: settingsData } = await supabase.from('app_settings').select('*')
+        if (settingsData) setPlatformSettings(settingsData)
+
         setLoading(false)
     }
 
@@ -210,7 +220,9 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 finalRail = fundingMethod === 'bs' ? 'PSAV' : 'DIGITAL_NETWORK'
             } else if (selectedRoute === 'us_to_bolivia') {
                 orderType = 'WORLD_TO_BO'
-                finalRail = 'PSAV'
+                if (fundingMethod === 'crypto' || fundingMethod === 'wallet') finalRail = 'DIGITAL_NETWORK'
+                else if (fundingMethod === 'ach') finalRail = 'ACH'
+                else finalRail = 'PSAV'
             } else if (selectedRoute === 'us_to_wallet') {
                 orderType = 'US_TO_WALLET'
                 finalRail = 'ACH'
@@ -223,7 +235,6 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
             const metadata: any = {
                 delivery_method: deliveryMethod,
                 payment_reason: paymentReason,
-                reception_method: receptionMethod,
                 intended_amount: amount ? Number(amount) : null,
                 destination_address: clientCryptoAddress || destinationId || cryptoDestination.address,
                 stablecoin: clientStablecoin || currency,
@@ -231,7 +242,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 receiveNetwork
             }
 
-            if (selectedRoute === 'bolivia_to_exterior') {
+            if (selectedRoute === 'bolivia_to_exterior' || selectedRoute === 'us_to_bolivia') {
                 metadata.funding_method = fundingMethod
                 metadata.delivery_method = deliveryMethod
                 if (deliveryMethod === 'swift') metadata.swift_details = swiftDetails
@@ -271,9 +282,6 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 // If crypto funding, status is waiting_deposit too (waiting for hash)
                 await supabase.from('payment_orders').update({ status: 'waiting_deposit' }).eq('id', order.id)
             } else if (selectedRoute === 'us_to_bolivia') {
-                if (qrFile) {
-                    await uploadOrderEvidence(order.id, qrFile, 'evidence_url')
-                }
                 await supabase.from('payment_orders').update({ status: 'waiting_deposit' }).eq('id', order.id)
             } else {
                 // Auto-complete or advance other automated flows
@@ -301,6 +309,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     }
 
     const translateType = (type: string) => {
+        if (!type) return 'Operación'
         const types: any = {
             'ACH_to_crypto': 'Banco (EE.UU.) a Cripto',
             'crypto_to_crypto': 'Cripto a Cripto',
@@ -415,7 +424,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                             </div>
 
                             <div
-                                onClick={() => setSelectedRoute('us_to_bolivia')}
+                                onClick={() => { setSelectedRoute('us_to_bolivia'); setFundingMethod('crypto'); }}
                                 className="premium-card clickable-card"
                                 style={{
                                     cursor: 'pointer',
@@ -829,15 +838,15 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         </>
                                     )}
 
-                                    {/* ROUTE 4: EE.UU. A BOLIVIA */}
+                                    {/* ROUTE 4: RECIBIR EN BOLIVIA (REFACTOR) */}
                                     {selectedRoute === 'us_to_bolivia' && (
                                         <>
                                             <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--primary)' }}>
-                                                <label style={{ fontWeight: 700, color: 'var(--primary)', display: 'block', marginBottom: '0.5rem' }}>Calculadora (USD → Bs)</label>
+                                                <label style={{ fontWeight: 700, color: 'var(--primary)', display: 'block', marginBottom: '0.5rem' }}>Calculadora (Monto a Liquidar → Bs)</label>
                                                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                                                     <input
                                                         type="number"
-                                                        placeholder="Monto en USD"
+                                                        placeholder="Monto Origen"
                                                         value={amount}
                                                         onChange={e => {
                                                             setAmount(e.target.value)
@@ -852,33 +861,72 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                             </div>
 
                                             <div className="input-group">
-                                                <label style={{ fontWeight: 700 }}>Método de Recepción en Bolivia</label>
-                                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                                    <label style={{ flex: 1, padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '12px', cursor: 'pointer', background: receptionMethod === 'qr' ? 'rgba(59, 130, 246, 0.05)' : '#fff' }}>
-                                                        <input type="radio" name="reception" value="qr" checked={receptionMethod === 'qr'} onChange={() => setReceptionMethod('qr')} /> QR Bancario
-                                                    </label>
-                                                    <label style={{ flex: 1, padding: '1rem', border: '1px solid #E2E8F0', borderRadius: '12px', cursor: 'pointer', background: receptionMethod === 'bank' ? 'rgba(59, 130, 246, 0.05)' : '#fff' }}>
-                                                        <input type="radio" name="reception" value="bank" checked={receptionMethod === 'bank'} onChange={() => setReceptionMethod('bank')} /> Cuenta Bancaria
-                                                    </label>
+                                                <label style={{ fontWeight: 700 }}>Paso 1: ¿Desde dónde envías?</label>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                                                    <button
+                                                        onClick={() => setFundingMethod('crypto')}
+                                                        style={{
+                                                            padding: '1rem 0.5rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: fundingMethod === 'crypto' ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700 }}>Cripto</div>
+                                                        <div style={{ fontSize: '0.65rem', opacity: 0.7 }}>USDT / USDC</div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setFundingMethod('ach')}
+                                                        style={{
+                                                            padding: '1rem 0.5rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'ach' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: fundingMethod === 'ach' ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700 }}>ACH</div>
+                                                        <div style={{ fontSize: '0.65rem', opacity: 0.7 }}>EE.UU. Bank</div>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setFundingMethod('wallet')}
+                                                        style={{
+                                                            padding: '1rem 0.5rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'wallet' ? 'var(--primary)' : 'var(--border)'}`,
+                                                            background: fundingMethod === 'wallet' ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem'
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 700 }}>Wallet</div>
+                                                        <div style={{ fontSize: '0.65rem', opacity: 0.7 }}>Saldo Interno</div>
+                                                    </button>
                                                 </div>
                                             </div>
 
-                                            {receptionMethod === 'qr' && (
-                                                <div className="input-group">
-                                                    <label style={{ fontWeight: 700 }}>Subir Imagen QR (Obligatorio)</label>
-                                                    <input type="file" onChange={e => setQrFile(e.target.files?.[0] || null)} />
-                                                </div>
-                                            )}
+                                            {/* Instrucciones Dinámicas según Funding */}
+                                            <div style={{ background: '#F8FAFC', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                                                {fundingMethod === 'crypto' && <p style={{ margin: 0 }}>Te brindaremos una dirección y cadena (USDT/USDC) para que realices tu envío.</p>}
+                                                {fundingMethod === 'ach' && <p style={{ margin: 0 }}>Tu envío irá a la dirección bancaria estadounidense que se te asigne.</p>}
+                                                {fundingMethod === 'wallet' && <p style={{ margin: 0 }}>Se utilizará el saldo disponible en tu billetera Guira.</p>}
+                                            </div>
 
                                             <div className="input-group">
-                                                <label style={{ fontWeight: 700 }}>Datos de Cuenta / Referencia</label>
+                                                <label style={{ fontWeight: 700 }}>Referencia de Liquidación</label>
                                                 <input
-                                                    placeholder="Número de cuenta bancaria o nombre del QR..."
+                                                    placeholder="Motivo del retiro o referencia interna..."
                                                     value={destinationId}
                                                     onChange={e => setDestinationId(e.target.value)}
                                                     style={{ padding: '0.75rem' }}
                                                 />
                                             </div>
+
+                                            {/* QR Global si está disponible */}
+                                            {platformSettings.find(s => s.key === 'bolivia_reception_qr_url')?.value && (
+                                                <div style={{ textAlign: 'center', padding: '1rem', background: '#fff', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                                                    <label style={{ fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>Paga aquí tus Bs (QR Oficial)</label>
+                                                    <img
+                                                        src={platformSettings.find(s => s.key === 'bolivia_reception_qr_url')?.value}
+                                                        alt="QR Recepción"
+                                                        style={{ width: '200px', height: '200px', margin: '0 auto' }}
+                                                    />
+                                                    <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                                        Escanea este QR para depositar la cantidad en Bolivianos seleccionada.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </>
                                     )}
 
@@ -959,7 +1007,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                         (deliveryMethod === 'ach' && (!achDetails.bankName || !achDetails.routingNumber || !achDetails.accountNumber)) ||
                                                         (deliveryMethod === 'crypto' && !cryptoDestination.address)
                                                     )) ||
-                                                    (selectedRoute === 'us_to_bolivia' && (!amount || !destinationId || (receptionMethod === 'qr' && !qrFile))) ||
+                                                    (selectedRoute === 'us_to_bolivia' && (!amount || !destinationId)) ||
                                                     (selectedRoute === 'us_to_wallet' && !clientCryptoAddress)
                                                 }
                                                 className="btn-primary"
@@ -1007,25 +1055,32 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         <h4 style={{ margin: 0, fontSize: '1rem' }}>{translateType(route.type)}</h4>
                                         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                                             Red: {route.metadata?.network?.toUpperCase() || 'TRON'}
+                                            {route.fee_percentage !== null && route.fee_percentage !== undefined && (
+                                                <span style={{ marginLeft: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>
+                                                    • Comisión: {route.fee_percentage}%
+                                                </span>
+                                            )}
                                         </p>
 
-                                        {route.status === 'active' && route.instructions ? (
-                                            <div style={{ marginTop: '1rem', background: '#F1F5F9', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
-                                                {route.instructions.banco && <div><b>Banco:</b> {route.instructions.banco}</div>}
-                                                {route.instructions.cuenta && <div><b>Cuenta:</b> {route.instructions.cuenta}</div>}
-                                                {route.instructions.routing && <div><b>Routing:</b> {route.instructions.routing}</div>}
-                                                {route.instructions.address && (
-                                                    <div style={{ marginTop: '0.5rem' }}>
-                                                        <b style={{ display: 'block', marginBottom: '0.2rem' }}>Dirección de envío:</b>
-                                                        <code style={{ wordBreak: 'break-all', display: 'block', padding: '4px', background: '#fff', borderRadius: '4px' }}>{route.instructions.address}</code>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem', fontStyle: 'italic' }}>
-                                                {route.status === 'submitted' ? 'Estamos configurando tus accesos...' : 'Contacta a soporte para instrucciones.'}
-                                            </p>
-                                        )}
+                                        {
+                                            route.status === 'active' && route.instructions ? (
+                                                <div style={{ marginTop: '1rem', background: '#F1F5F9', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                                                    {route.instructions.banco && <div><b>Banco:</b> {route.instructions.banco}</div>}
+                                                    {route.instructions.cuenta && <div><b>Cuenta:</b> {route.instructions.cuenta}</div>}
+                                                    {route.instructions.routing && <div><b>Routing:</b> {route.instructions.routing}</div>}
+                                                    {route.instructions.address && (
+                                                        <div style={{ marginTop: '0.5rem' }}>
+                                                            <b style={{ display: 'block', marginBottom: '0.2rem' }}>Dirección de envío:</b>
+                                                            <code style={{ wordBreak: 'break-all', display: 'block', padding: '4px', background: '#fff', borderRadius: '4px' }}>{route.instructions.address}</code>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem', fontStyle: 'italic' }}>
+                                                    {route.status === 'submitted' ? 'Estamos configurando tus accesos...' : 'Contacta a soporte para instrucciones.'}
+                                                </p>
+                                            )
+                                        }
                                     </div>
                                 ))}
                             </div>
@@ -1060,7 +1115,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                             'Transferencia Interna'}
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
-                                                                {trans.business_purpose.replace(/_/g, ' ')}
+                                                                {trans.business_purpose?.replace(/_/g, ' ') || 'Pago'}
                                                                 {trans.metadata?.network && ` • ${trans.metadata.network.toUpperCase()}`}
                                                             </div>
                                                         </td>
