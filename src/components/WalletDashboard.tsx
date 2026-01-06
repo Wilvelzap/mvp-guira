@@ -189,8 +189,8 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
                                 {pendingTransfers.map((p) => (
                                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)', background: 'rgba(59, 130, 246, 0.02)' }}>
                                         <td style={{ padding: '1.25rem 0' }}>
-                                            <div style={{ fontWeight: 600, color: 'var(--primary)' }}>{p.business_purpose?.replace(/_/g, ' ') || 'Procesando'} (Procesando)</div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.transfer_kind?.replace(/_/g, ' ') || 'Transferencia'}</div>
+                                            <div style={{ fontWeight: 600, color: 'var(--primary)' }}>{String(p.business_purpose || "Procesando").replace(/_/g, ' ')} (Procesando)</div>
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{String(p.transfer_kind || "Transferencia").replace(/_/g, ' ')}</div>
                                         </td>
                                         <td style={{ padding: '1.25rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                                             {new Date(p.created_at).toLocaleDateString()}

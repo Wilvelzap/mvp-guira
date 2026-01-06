@@ -309,7 +309,6 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     }
 
     const translateType = (type: string) => {
-        if (!type) return 'Transferencia'
         const types: any = {
             'ACH_to_crypto': 'Banco (EE.UU.) a Billetera',
             'crypto_to_crypto': 'Cripto a Cripto',
@@ -318,7 +317,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
             'us_to_wallet': 'Recibir desde EE.UU.',
             'incoming_transfer': 'Depósito USDT'
         }
-        return types[type] || (type.toString().replace(/_/g, ' '))
+        return types[type] || (String(type || "").replace(/_/g, ' '))
     }
 
     return (
@@ -1188,7 +1187,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                             'Transferencia Interna'}
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
-                                                                {trans.business_purpose?.toString().replace(/_/g, ' ') || 'Pago'}
+                                                                {String(trans.business_purpose || 'Pago').replace(/_/g, ' ')}
                                                                 {trans.metadata?.network && ` • ${trans.metadata.network.toUpperCase()}`}
                                                             </div>
                                                         </td>

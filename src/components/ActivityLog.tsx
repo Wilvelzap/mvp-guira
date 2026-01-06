@@ -39,7 +39,7 @@ export const ActivityLog: React.FC = () => {
             'login': 'Inicio de Sesión',
             'signup': 'Registro de Cuenta'
         }
-        return actions[action] || action.toString().replace(/_/g, ' ')
+        return actions[action] || String(action || "").replace(/_/g, ' ')
     }
 
     return (
