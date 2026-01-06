@@ -309,13 +309,16 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     }
 
     const translateType = (type: string) => {
-        if (!type) return 'Operación'
+        if (!type) return 'Transferencia'
         const types: any = {
-            'ACH_to_crypto': 'Banco (EE.UU.) a Cripto',
+            'ACH_to_crypto': 'Banco (EE.UU.) a Billetera',
             'crypto_to_crypto': 'Cripto a Cripto',
+            'bolivia_to_exterior': 'Pagar al Exterior',
+            'us_to_bolivia': 'Recibir en Bolivia',
+            'us_to_wallet': 'Recibir desde EE.UU.',
             'incoming_transfer': 'Depósito USDT'
         }
-        return types[type] || type.replace(/_/g, ' ')
+        return types[type] || (type.toString().replace(/_/g, ' '))
     }
 
     return (
@@ -472,10 +475,65 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     </p>
 
                                     <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', margin: '1.5rem 0', textAlign: 'left', fontSize: '0.9rem', border: '1px solid #FEF3C7' }}>
-                                        <div style={{ marginBottom: '0.5rem' }}><b>Banco:</b> Mercantil Santa Cruz</div>
-                                        <div style={{ marginBottom: '0.5rem' }}><b>Cuenta Bs:</b> 401-2345678-9</div>
-                                        <div style={{ marginBottom: '0.5rem' }}><b>Nombre:</b> GUIRA PASV</div>
-                                        <div><b>Monto a depositar:</b> <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{amountBs} Bs</span></div>
+                                        {fundingMethod === 'bs' ? (
+                                            <>
+                                                <div style={{ marginBottom: '1rem', borderBottom: '1px solid #F3F4F6', paddingBottom: '1rem' }}>
+                                                    <b style={{ color: '#D97706', display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', textTransform: 'uppercase' }}>Instrucciones de Pago (Bolivia)</b>
+                                                    <div style={{ marginBottom: '0.5rem' }}><b>Banco:</b> Mercantil Santa Cruz</div>
+                                                    <div style={{ marginBottom: '0.5rem' }}><b>Cuenta Bs:</b> 401-2345678-9</div>
+                                                    <div style={{ marginBottom: '0.5rem' }}><b>Nombre:</b> GUIRA PASV</div>
+                                                    <div><b>Monto a depositar:</b> <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{amountBs} Bs</span></div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div style={{ marginBottom: '1rem', borderBottom: '1px solid #F3F4F6', paddingBottom: '1rem' }}>
+                                                <b style={{ color: '#D97706', display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', textTransform: 'uppercase' }}>Instrucciones de Pago (Cripto)</b>
+                                                {payinRoutes.find(r => r.type === 'crypto_to_crypto' && r.status === 'active')?.instructions?.address ? (
+                                                    <div style={{ marginTop: '0.5rem' }}>
+                                                        <b style={{ display: 'block', marginBottom: '0.2rem' }}>Dirección de envío:</b>
+                                                        <code style={{ wordBreak: 'break-all', display: 'block', padding: '4px', background: '#F8FAFC', borderRadius: '4px', border: '1px solid #E2E8F0' }}>
+                                                            {payinRoutes.find(r => r.type === 'crypto_to_crypto' && r.status === 'active')?.instructions?.address}
+                                                        </code>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                                            Red: {payinRoutes.find(r => r.type === 'crypto_to_crypto' && r.status === 'active')?.metadata?.network?.toUpperCase() || 'Ethereum (ERC-20)'}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p style={{ margin: 0 }}>Por favor envía <b>{amount} {currency}</b> a la dirección de red digital asignada. Si no tienes una dirección asignada, contacta a soporte.</p>
+                                                )}
+                                                <div style={{ marginTop: '0.5rem' }}><b>Monto:</b> <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>{amount} {currency}</span></div>
+                                            </div>
+                                        )}
+
+                                        <div style={{ marginTop: '1rem' }}>
+                                            <b style={{ color: '#059669', display: 'block', marginBottom: '0.5rem', fontSize: '0.75rem', textTransform: 'uppercase' }}>Datos de Destino (Llegada)</b>
+                                            {deliveryMethod === 'swift' && (
+                                                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                                                    <div><b>Banco:</b> {swiftDetails.bankName}</div>
+                                                    <div><b>SWIFT:</b> {swiftDetails.swiftCode}</div>
+                                                    <div><b>IBAN/Cuenta:</b> {swiftDetails.iban}</div>
+                                                </div>
+                                            )}
+                                            {deliveryMethod === 'ach' && (
+                                                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                                                    <div><b>Banco:</b> {achDetails.bankName}</div>
+                                                    <div><b>Routing:</b> {achDetails.routingNumber}</div>
+                                                    <div><b>Cuenta:</b> {achDetails.accountNumber}</div>
+                                                </div>
+                                            )}
+                                            {deliveryMethod === 'crypto' && (
+                                                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                        <b>Dirección:</b>
+                                                        <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{cryptoDestination.address}</code>
+                                                    </div>
+                                                    <div><b>Red:</b> {cryptoDestination.network.toUpperCase()}</div>
+                                                </div>
+                                            )}
+                                            <div style={{ marginTop: '0.5rem', borderTop: '1px dashed #E5E7EB', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#4B5563' }}>
+                                                Motivo: {paymentReason}
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div className="input-group" style={{ textAlign: 'left' }}>
@@ -1074,6 +1132,21 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             <code style={{ wordBreak: 'break-all', display: 'block', padding: '4px', background: '#fff', borderRadius: '4px' }}>{route.instructions.address}</code>
                                                         </div>
                                                     )}
+
+                                                    {route.metadata?.destination_wallet && (
+                                                        <div style={{ marginTop: '1rem', borderTop: '1px dashed #CBD5E1', paddingTop: '0.5rem' }}>
+                                                            <b style={{ display: 'block', marginBottom: '0.2rem', fontSize: '0.75rem', color: 'var(--primary)', textTransform: 'uppercase' }}>Destino Final</b>
+                                                            <div style={{ fontSize: '0.8rem' }}>
+                                                                <b>Dirección:</b> <code style={{ wordBreak: 'break-all' }}>{route.metadata.destination_wallet}</code>
+                                                            </div>
+                                                            {route.metadata.destination_network && (
+                                                                <div style={{ fontSize: '0.8rem' }}><b>Red:</b> {route.metadata.destination_network.toUpperCase()}</div>
+                                                            )}
+                                                            {route.metadata.destination_currency && (
+                                                                <div style={{ fontSize: '0.8rem' }}><b>Moneda:</b> {route.metadata.destination_currency}</div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem', fontStyle: 'italic' }}>
@@ -1115,7 +1188,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                             'Transferencia Interna'}
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
-                                                                {trans.business_purpose?.replace(/_/g, ' ') || 'Pago'}
+                                                                {trans.business_purpose?.toString().replace(/_/g, ' ') || 'Pago'}
                                                                 {trans.metadata?.network && ` • ${trans.metadata.network.toUpperCase()}`}
                                                             </div>
                                                         </td>

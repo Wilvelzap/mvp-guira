@@ -599,7 +599,7 @@ export const StaffPanel: React.FC = () => {
                                 {fees.map(f => (
                                     <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
                                         <div>
-                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type?.replace(/_/g, ' ') || 'Fee'}</div>
+                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type?.toString().replace(/_/g, ' ') || 'Fee'}</div>
                                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo: {f.fee_type}</div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -796,7 +796,7 @@ export const StaffPanel: React.FC = () => {
                                             if (key === 'ubos') return null;
                                             return (
                                                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>{key.replace(/_/g, ' ')}:</span>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{key.toString().replace(/_/g, ' ')}:</span>
                                                     <span style={{ fontWeight: 500 }}>{String(val)}</span>
                                                 </div>
                                             )
@@ -805,7 +805,7 @@ export const StaffPanel: React.FC = () => {
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                                         {['id_front', 'id_back', 'selfie', 'proof_of_address', 'company_cert'].map(doc => selectedItem.data?.[doc] && (
                                             <button key={doc} onClick={() => handleViewDoc(selectedItem.data[doc])} className="btn-secondary" style={{ fontSize: '0.7rem' }}>
-                                                Ver {doc.replace(/_/g, ' ')}
+                                                Ver {doc.toString().replace(/_/g, ' ')}
                                             </button>
                                         ))}
                                     </div>
@@ -1122,13 +1122,13 @@ export const StaffPanel: React.FC = () => {
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo:</span>
                                             <span style={{ fontWeight: 700 }}>{translateOrderType(selectedItem.order_type)}</span>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Monto:</span>
-                                            <span style={{ fontWeight: 800 }}>{selectedItem.amount_origin} {selectedItem.origin_currency}</span>
+                                            <span style={{ fontWeight: 800 }}>{selectedItem.amount_origin} {selectedItem.currency || selectedItem.origin_currency}</span>
                                         </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rail:</span>
-                                            <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{selectedItem.processing_rail.replace(/_/g, ' ')}</span>
+                                            <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{selectedItem.processing_rail?.toString().replace(/_/g, ' ')}</span>
                                         </div>
                                         {selectedItem.metadata?.payment_reason && (
                                             <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
