@@ -713,7 +713,7 @@ export const StaffPanel: React.FC = () => {
                                                     </div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                         {activeTab === 'orders'
-                                                            ? `${translateOrderType(item.order_type)} [${item.processing_rail.split('_')[0].toUpperCase()}]`
+                                                            ? `${translateOrderType(item.order_type)} [${String(item.processing_rail || "").split('_')[0].toUpperCase()}]`
                                                             : (item.transfer_kind ? `${item.transfer_kind} (${item.business_purpose})` : (item.type || 'General'))}
                                                     </div>
                                                 </td>

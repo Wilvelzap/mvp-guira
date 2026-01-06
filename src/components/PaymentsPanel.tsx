@@ -526,7 +526,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                         <b>Dirección:</b>
                                                         <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{cryptoDestination.address}</code>
                                                     </div>
-                                                    <div><b>Red:</b> {cryptoDestination.network.toUpperCase()}</div>
+                                                    <div><b>Red:</b> {String(cryptoDestination.network || "").toUpperCase()}</div>
                                                 </div>
                                             )}
                                             <div style={{ marginTop: '0.5rem', borderTop: '1px dashed #E5E7EB', paddingTop: '0.5rem', fontSize: '0.8rem', color: '#4B5563' }}>
@@ -1111,7 +1111,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         </div>
                                         <h4 style={{ margin: 0, fontSize: '1rem' }}>{translateType(route.type)}</h4>
                                         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                                            Red: {route.metadata?.network?.toUpperCase() || 'TRON'}
+                                            Red: {String(route.metadata?.network || 'TRON').toUpperCase()}
                                             {route.fee_percentage !== null && route.fee_percentage !== undefined && (
                                                 <span style={{ marginLeft: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>
                                                     • Comisión: {route.fee_percentage}%
@@ -1139,7 +1139,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                 <b>Dirección:</b> <code style={{ wordBreak: 'break-all' }}>{route.metadata.destination_wallet}</code>
                                                             </div>
                                                             {route.metadata.destination_network && (
-                                                                <div style={{ fontSize: '0.8rem' }}><b>Red:</b> {route.metadata.destination_network.toUpperCase()}</div>
+                                                                <div style={{ fontSize: '0.8rem' }}><b>Red:</b> {String(route.metadata.destination_network || "").toUpperCase()}</div>
                                                             )}
                                                             {route.metadata.destination_currency && (
                                                                 <div style={{ fontSize: '0.8rem' }}><b>Moneda:</b> {route.metadata.destination_currency}</div>
@@ -1188,7 +1188,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             </div>
                                                             <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700 }}>
                                                                 {String(trans.business_purpose || 'Pago').replace(/_/g, ' ')}
-                                                                {trans.metadata?.network && ` • ${trans.metadata.network.toUpperCase()}`}
+                                                                {trans.metadata?.network && ` • ${String(trans.metadata.network || "").toUpperCase()}`}
                                                             </div>
                                                         </td>
                                                         <td style={{ padding: '1.25rem' }}>
@@ -1200,7 +1200,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                                 background: trans.status === 'completed' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                                                                 color: trans.status === 'completed' ? 'var(--success)' : 'var(--warning)'
                                                             }}>
-                                                                {trans.status.toUpperCase()}
+                                                                {String(trans.status || "").toUpperCase()}
                                                             </span>
                                                         </td>
                                                         <td style={{ padding: '1.25rem' }}>
