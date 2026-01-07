@@ -5,7 +5,8 @@ import {
     Wallet,
     ArrowUpRight,
     History,
-    AlertCircle
+    AlertCircle,
+    Plus
 } from 'lucide-react'
 
 interface WalletDashboardProps {
@@ -90,11 +91,18 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
                 <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0 }}>Mi Billetera</h1>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button
+                        onClick={() => onNavigate('payments', 'bolivia_to_exterior')}
+                        className="btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', border: '1px solid var(--border)' }}
+                    >
+                        <ArrowUpRight size={18} /> Pagar al Exterior
+                    </button>
+                    <button
                         onClick={() => onNavigate('payments', 'bank_to_crypto')}
                         className="btn-primary"
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                     >
-                        <ArrowUpRight size={18} /> Cargar Fondos
+                        <Plus size={18} /> Cargar Fondos
                     </button>
                 </div>
             </div>
