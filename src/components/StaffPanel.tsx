@@ -148,7 +148,7 @@ export const StaffPanel: React.FC = () => {
                         bridge_transfer_id: item.id,
                         type: item.transfer_kind.startsWith('wallet_to_') ? 'payout' : 'deposit',
                         amount: item.amount,
-                        description: `Bridge Transfer: ${String(item.business_purpose || 'Transferencia').replace(/_/g, ' ')}`,
+                        description: `Bridge Transfer: ${item.business_purpose ? String(item.business_purpose).replace(/_/g, ' ') : 'Transferencia'}`,
                         metadata: { bridge_transfer_id: item.bridge_transfer_id }
                     }])
                 }
@@ -598,7 +598,7 @@ export const StaffPanel: React.FC = () => {
                                 {fees.map(f => (
                                     <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
                                         <div>
-                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{String(f.type || 'Fee').replace(/_/g, ' ')}</div>
+                                            <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.8rem', color: 'var(--primary)' }}>{f.type ? String(f.type).replace(/_/g, ' ') : 'Fee'}</div>
                                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tipo: {f.fee_type}</div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -795,7 +795,7 @@ export const StaffPanel: React.FC = () => {
                                             if (key === 'ubos') return null;
                                             return (
                                                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>{String(key || "").replace(/_/g, ' ')}:</span>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{key ? String(key).replace(/_/g, ' ') : ''}:</span>
                                                     <span style={{ fontWeight: 500 }}>{String(val)}</span>
                                                 </div>
                                             )
@@ -804,7 +804,7 @@ export const StaffPanel: React.FC = () => {
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                                         {['id_front', 'id_back', 'selfie', 'proof_of_address', 'company_cert'].map(doc => selectedItem.data?.[doc] && (
                                             <button key={doc} onClick={() => handleViewDoc(selectedItem.data[doc])} className="btn-secondary" style={{ fontSize: '0.7rem' }}>
-                                                Ver {String(doc || "").replace(/_/g, ' ')}
+                                                Ver {doc ? String(doc).replace(/_/g, ' ') : ''}
                                             </button>
                                         ))}
                                     </div>
@@ -1127,7 +1127,7 @@ export const StaffPanel: React.FC = () => {
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rail:</span>
-                                            <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{String(selectedItem.processing_rail || "").replace(/_/g, ' ')}</span>
+                                            <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{selectedItem.processing_rail ? String(selectedItem.processing_rail).replace(/_/g, ' ') : ''}</span>
                                         </div>
                                         {selectedItem.metadata?.payment_reason && (
                                             <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>

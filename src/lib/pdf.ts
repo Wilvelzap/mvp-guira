@@ -56,7 +56,7 @@ export function generatePaymentPDF(data: PaymentDocData) {
     addRow('Cliente', data.userName)
     addRow('Proveedor / Beneficiario', data.supplierName)
     addRow('Fecha de Proceso', new Date(data.date).toLocaleString())
-    addRow('Método de Procesamiento', (data.type || '').replace(/_/g, ' ').toUpperCase())
+    addRow('Método de Procesamiento', (data.type ? String(data.type).replace(/_/g, ' ') : '').toUpperCase())
     addRow('Monto Original', `${data.amount.toLocaleString()} ${data.currency}`)
 
     if (data.exchangeRate && data.exchangeRate !== 1) {

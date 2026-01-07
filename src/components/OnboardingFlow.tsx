@@ -366,7 +366,7 @@ export const OnboardingFlow: React.FC = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
                                 {['id_front', 'id_back', 'selfie'].map(docKey => (
                                     <div key={docKey} className="file-upload-card">
-                                        <label className="input-label" style={{ fontSize: '0.65rem' }}>{String(docKey || "").replace(/_/g, ' ')}</label>
+                                        <label className="input-label" style={{ fontSize: '0.65rem' }}>{docKey ? String(docKey).replace(/_/g, ' ') : ''}</label>
                                         <div className="upload-dropzone" style={{ height: '70px' }}>
                                             <input type="file" onChange={e => handleUboFileChange(e, idx, docKey)} />
                                             <div className="upload-content" style={{ fontSize: '0.7rem', color: uboFiles[idx]?.[docKey] ? 'var(--secondary)' : 'var(--text-muted)' }}>
