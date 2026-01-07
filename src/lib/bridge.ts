@@ -35,7 +35,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
         .from('profiles')
         .select('onboarding_status, bridge_customer_id')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
 
     if (profileErr || !profile) throw new Error('Usuario no encontrado o perfil incompleto')
     if (profile.onboarding_status !== 'verified') {
@@ -60,7 +60,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
             .from('wallets')
             .select('id')
             .eq('user_id', userId)
-            .single()
+            .maybeSingle()
 
         if (!wallet) throw new Error('Billetera no encontrada')
 

@@ -12,8 +12,7 @@ import {
     X,
     AlertTriangle,
     Save,
-    Upload,
-    Settings
+    Upload
 } from 'lucide-react'
 import { generatePaymentPDF } from '../lib/pdf'
 import { registerAuditLog } from '../lib/audit'
@@ -55,7 +54,7 @@ export const StaffPanel: React.FC = () => {
         const checkRole = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (user) {
-                const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+                const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
                 if (profile) setUserRole(profile.role)
             }
         }

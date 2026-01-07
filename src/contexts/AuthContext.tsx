@@ -50,10 +50,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single()
+                .maybeSingle()
 
             if (error) throw error
-            setProfile(data)
+            if (data) setProfile(data)
         } catch (error) {
             console.error('Error fetching profile:', error)
         } finally {
