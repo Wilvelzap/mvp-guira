@@ -1,15 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { motion } from 'framer-motion'
 import {
     Wallet,
     ArrowUpRight,
-    ArrowDownLeft,
     History,
-    TrendingUp,
-    AlertCircle,
-    Clock
+    AlertCircle
 } from 'lucide-react'
 
 interface WalletDashboardProps {
