@@ -39,7 +39,7 @@ export interface CreateOrderParams {
 }
 
 export async function createPaymentOrder(params: CreateOrderParams) {
-    const { data, error } = await supabase
+    const { data: insertRes, error } = await supabase
         .from('payment_orders')
         .insert({
             user_id: params.userId,
@@ -56,26 +56,29 @@ export async function createPaymentOrder(params: CreateOrderParams) {
             status: 'created'
         })
         .select()
-        .maybeSingle()
+
+    const data = insertRes?.[0] || null
 
     return { data, error }
 }
 
 export async function updateOrderStatus(orderId: string, status: OrderStatus, metadataUpdates?: any) {
-    const { data: current } = await supabase
+    const { data: currentData } = await supabase
         .from('payment_orders')
         .select('metadata')
         .eq('id', orderId)
-        .maybeSingle()
+        .limit(1)
 
+    const current = currentData?.[0]
     const newMetadata = { ...(current?.metadata || {}), ...metadataUpdates }
 
-    const { data, error } = await supabase
+    const { data: updateRes, error } = await supabase
         .from('payment_orders')
         .update({ status, metadata: newMetadata, updated_at: new Date().toISOString() })
         .eq('id', orderId)
         .select()
-        .maybeSingle()
+
+    const data = updateRes?.[0] || null
 
     return { data, error }
 }

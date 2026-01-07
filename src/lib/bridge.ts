@@ -31,24 +31,26 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
     }
 
     // 1. Pre-validations
-    const { data: profile, error: profileErr } = await supabase
+    const { data: profileData, error: profileErr } = await supabase
         .from('profiles')
         .select('onboarding_status, bridge_customer_id')
         .eq('id', userId)
-        .maybeSingle()
+        .limit(1)
 
+    const profile = profileData?.[0]
     if (profileErr || !profile) throw new Error('Usuario no encontrado o perfil incompleto')
     if (profile.onboarding_status !== 'verified') {
         throw new Error('El usuario debe estar verificado (KYC Approved) para operar')
     }
 
     // 2. Idempotency Check
-    const { data: existing } = await supabase
+    const { data: existingData } = await supabase
         .from('bridge_transfers')
         .select('*')
         .eq('idempotency_key', idempotencyKey)
-        .maybeSingle()
+        .limit(1)
 
+    const existing = existingData?.[0]
     if (existing) {
         console.log('Transferencia existente encontrada (Idempotencia):', existing.id)
         return { data: existing, error: null }
@@ -56,12 +58,13 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
 
     // 3. Balance Validation (Only for outgoing transfers from wallet)
     if ((kind || '').startsWith('wallet_to_')) {
-        const { data: wallet } = await supabase
+        const { data: walletData } = await supabase
             .from('wallets')
             .select('id')
             .eq('user_id', userId)
-            .maybeSingle()
+            .limit(1)
 
+        const wallet = walletData?.[0]
         if (!wallet) throw new Error('Billetera no encontrada')
 
         const { data: entries } = await supabase
@@ -91,7 +94,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
     const exchangeRate = params.exchangeRate || 1
 
     // 5. Create Transfer Record (Optimistic state: 'created' or 'pending')
-    const { data: transfer, error: transferErr } = await supabase
+    const { data: insertRes, error: transferErr } = await supabase
         .from('bridge_transfers')
         .insert({
             user_id: userId,
@@ -113,7 +116,8 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
             }
         })
         .select()
-        .maybeSingle()
+
+    const transfer = insertRes?.[0]
 
     return { data: transfer, error: transferErr }
 }

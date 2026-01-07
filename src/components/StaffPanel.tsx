@@ -54,7 +54,8 @@ export const StaffPanel: React.FC = () => {
         const checkRole = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (user) {
-                const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+                const { data: profiles } = await supabase.from('profiles').select('role').eq('id', user.id).limit(1)
+                const profile = profiles?.[0]
                 if (profile) setUserRole(profile.role)
             }
         }
@@ -133,22 +134,23 @@ export const StaffPanel: React.FC = () => {
                 await supabase.from('profiles').update({ onboarding_status: profileStatus }).eq('id', item.user_id)
 
                 if (status === 'verified') {
-                    const { data: existingWallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).maybeSingle()
-                    if (!existingWallet) {
+                    const { data: wallets } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).limit(1)
+                    if (!wallets || wallets.length === 0) {
                         await supabase.from('wallets').insert([{ user_id: item.user_id, currency: 'USD' }])
                     }
                 }
             }
 
             if (table === 'bridge_transfers' && status === 'completed') {
-                const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).maybeSingle()
+                const { data: wallets } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).limit(1)
+                const wallet = wallets?.[0]
                 if (wallet) {
                     await supabase.from('ledger_entries').insert([{
                         wallet_id: wallet.id,
                         bridge_transfer_id: item.id,
                         type: (item.transfer_kind || '').startsWith('wallet_to_') ? 'payout' : 'deposit',
                         amount: item.amount,
-                        description: `Bridge Transfer: ${item.business_purpose ? String(item.business_purpose).replace(/_/g, ' ') : 'Transferencia'}`,
+                        description: `Bridge Transfer: ${item?.business_purpose ? String(item.business_purpose).replace(/_/g, ' ') : 'Transferencia'}`,
                         metadata: { bridge_transfer_id: item.bridge_transfer_id }
                     }])
                 }
@@ -214,15 +216,17 @@ export const StaffPanel: React.FC = () => {
                     delete payload.type; // Pertenece a payin_routes
                 }
 
-                res = await supabase.from(table).insert(payload).select().single()
-                if (res.error) throw res.error
+                const { data: insertData, error: insertError } = await supabase.from(table).insert(payload).select()
+                if (insertError) throw insertError
+                const insertedItem = insertData?.[0]
+                if (!insertedItem) throw new Error('No se pudo crear el registro')
 
                 await registerAuditLog({
                     performed_by: user.id,
                     role: 'admin',
                     action: 'create',
                     table_name: table,
-                    record_id: res.data.id,
+                    record_id: insertedItem.id,
                     new_values: payload,
                     reason: modificationReason || 'Creaci\u00f3n manual de registro operativo'
                 })

@@ -15,14 +15,14 @@ export async function getFeeConfig(type: FeeType): Promise<FeeConfig | null> {
         .from('fees_config')
         .select('*')
         .eq('type', type)
-        .maybeSingle()
+        .limit(1)
 
     if (error) {
         console.error('Error fetching fee config:', error)
         return null
     }
 
-    return data
+    return (data && data.length > 0) ? data[0] : null
 }
 
 export function calculateFee(amount: number, config: FeeConfig): number {
