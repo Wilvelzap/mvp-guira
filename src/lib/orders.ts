@@ -56,7 +56,7 @@ export async function createPaymentOrder(params: CreateOrderParams) {
             status: 'created'
         })
         .select()
-        .single()
+        .maybeSingle()
 
     return { data, error }
 }
@@ -66,7 +66,7 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, me
         .from('payment_orders')
         .select('metadata')
         .eq('id', orderId)
-        .single()
+        .maybeSingle()
 
     const newMetadata = { ...(current?.metadata || {}), ...metadataUpdates }
 
@@ -75,13 +75,13 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, me
         .update({ status, metadata: newMetadata, updated_at: new Date().toISOString() })
         .eq('id', orderId)
         .select()
-        .single()
+        .maybeSingle()
 
     return { data, error }
 }
 
 export async function uploadOrderEvidence(orderId: string, file: File, column: 'evidence_url' | 'staff_comprobante_url') {
-    const fileExt = file.name.split('.').pop()
+    const fileExt = (file.name || '').split('.').pop()
     const fileName = `${orderId}/${column}_${Math.random()}.${fileExt}`
     const filePath = `evidences/${fileName}`
 

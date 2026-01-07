@@ -146,7 +146,7 @@ export const StaffPanel: React.FC = () => {
                     await supabase.from('ledger_entries').insert([{
                         wallet_id: wallet.id,
                         bridge_transfer_id: item.id,
-                        type: item.transfer_kind.startsWith('wallet_to_') ? 'payout' : 'deposit',
+                        type: (item.transfer_kind || '').startsWith('wallet_to_') ? 'payout' : 'deposit',
                         amount: item.amount,
                         description: `Bridge Transfer: ${item.business_purpose ? String(item.business_purpose).replace(/_/g, ' ') : 'Transferencia'}`,
                         metadata: { bridge_transfer_id: item.bridge_transfer_id }
@@ -655,7 +655,7 @@ export const StaffPanel: React.FC = () => {
                                                 if (!file) return
                                                 setUploadingQr(true)
                                                 try {
-                                                    const fileName = `global_bolivia_qr_${Date.now()}.${file.name.split('.').pop()}`
+                                                    const fileName = `global_bolivia_qr_${Date.now()}.${(file.name || '').split('.').pop()}`
                                                     const { error: uploadError } = await supabase.storage.from('platform_assets').upload(fileName, file)
                                                     if (uploadError) throw uploadError
 
@@ -1050,7 +1050,7 @@ export const StaffPanel: React.FC = () => {
                                                 {selectedItem.metadata?.creation_type === 'manual' && (
                                                     <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>MANUAL</span>
                                                 )}
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {selectedItem.id.split('-')[0]}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {(selectedItem.id || '').split('-')[0]}</span>
                                             </div>
                                         </div>
 
@@ -1208,7 +1208,7 @@ export const StaffPanel: React.FC = () => {
                                                         try {
                                                             let publicUrl = selectedItem.staff_comprobante_url
                                                             if (file) {
-                                                                const fileExt = file.name.split('.').pop()
+                                                                const fileExt = (file.name || '').split('.').pop()
                                                                 const filePath = `evidences/${selectedItem.id}/staff_${Date.now()}.${fileExt}`
                                                                 const { error: uploadError } = await supabase.storage.from('order-evidences').upload(filePath, file)
                                                                 if (uploadError) throw uploadError

@@ -47,7 +47,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
         .from('bridge_transfers')
         .select('*')
         .eq('idempotency_key', idempotencyKey)
-        .single()
+        .maybeSingle()
 
     if (existing) {
         console.log('Transferencia existente encontrada (Idempotencia):', existing.id)
@@ -55,7 +55,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
     }
 
     // 3. Balance Validation (Only for outgoing transfers from wallet)
-    if (kind.startsWith('wallet_to_')) {
+    if ((kind || '').startsWith('wallet_to_')) {
         const { data: wallet } = await supabase
             .from('wallets')
             .select('id')
@@ -113,7 +113,7 @@ export async function createBridgeTransfer(params: CreateTransferParams) {
             }
         })
         .select()
-        .single()
+        .maybeSingle()
 
     return { data: transfer, error: transferErr }
 }

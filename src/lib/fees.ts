@@ -15,7 +15,7 @@ export async function getFeeConfig(type: FeeType): Promise<FeeConfig | null> {
         .from('fees_config')
         .select('*')
         .eq('type', type)
-        .single()
+        .maybeSingle()
 
     if (error) {
         console.error('Error fetching fee config:', error)

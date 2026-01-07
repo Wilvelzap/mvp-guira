@@ -201,7 +201,7 @@ export const WalletDashboard: React.FC<{ onNavigate?: (tab: any, intent?: any) =
                                             fontWeight: 700,
                                             color: 'var(--warning)'
                                         }}>
-                                            {p.transfer_kind.includes('deposit') ? '+' : '-'}${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            {(p.transfer_kind || '').includes('deposit') ? '+' : '-'}${Number(p.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                         </td>
                                     </tr>
                                 ))}
