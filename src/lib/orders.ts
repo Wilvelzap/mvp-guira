@@ -17,6 +17,7 @@ export interface PaymentOrder {
     fee_total: number
     status: OrderStatus
     beneficiary_id: string | null
+    supplier_id: string | null
     metadata: any
     evidence_url: string | null
     staff_comprobante_url: string | null
@@ -32,6 +33,7 @@ export interface CreateOrderParams {
     originCurrency: string
     destinationCurrency: string
     beneficiaryId?: string
+    supplierId?: string
     amountConverted?: number
     exchangeRate?: number
     feeTotal?: number
@@ -49,6 +51,7 @@ export async function createPaymentOrder(params: CreateOrderParams) {
             origin_currency: params.originCurrency,
             destination_currency: params.destinationCurrency,
             beneficiary_id: params.beneficiaryId,
+            supplier_id: params.supplierId,
             amount_converted: params.amountConverted,
             exchange_rate_applied: params.exchangeRate,
             fee_total: params.feeTotal || 0,
