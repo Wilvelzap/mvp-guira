@@ -621,6 +621,38 @@ export const StaffPanel: React.FC = () => {
                             </div>
 
                             <h3 style={{ marginTop: '3rem', marginBottom: '1.5rem' }}>Ajustes de Plataforma</h3>
+
+                            <div className="premium-card" style={{ background: '#F0FDFA', border: '1px solid #CCFBF1', marginBottom: '1.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <h4 style={{ margin: 0, color: '#0F766E' }}>Tasa de Cambio Bs a USDT</h4>
+                                        <p style={{ margin: '0.5rem 0', fontSize: '0.8rem', color: '#134E4A' }}>
+                                            Define la tasa que verán los clientes al pagar al exterior en Bolivianos.
+                                        </p>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            defaultValue={platformSettings.find(s => s.key === 'bolivia_exchange_rate')?.value || '10.5'}
+                                            onBlur={async (e) => {
+                                                const val = e.target.value;
+                                                const { error } = await supabase
+                                                    .from('app_settings')
+                                                    .upsert({ key: 'bolivia_exchange_rate', value: val, updated_at: new Date().toISOString() });
+                                                if (error) alert('Error al actualizar tasa: ' + error.message);
+                                                else {
+                                                    const { data } = await supabase.from('app_settings').select('*');
+                                                    if (data) setPlatformSettings(data);
+                                                }
+                                            }}
+                                            style={{ width: '100px', textAlign: 'right', padding: '0.5rem', fontWeight: 700, fontSize: '1.1rem' }}
+                                        />
+                                        <span style={{ fontWeight: 600, color: '#0F766E' }}>Bs / USDT</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="premium-card" style={{ background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>

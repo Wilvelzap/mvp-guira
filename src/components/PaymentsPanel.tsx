@@ -24,6 +24,9 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const [currentOrderId, setCurrentOrderId] = useState<string | null>(null)
     const [waitingForEvidence, setWaitingForEvidence] = useState(false)
     const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
+    const [isManagingSuppliers, setIsManagingSuppliers] = useState(false)
+    const [isCreatingSupplier, setIsCreatingSupplier] = useState(false)
+    const [newSupplier, setNewSupplier] = useState({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '' })
 
     // Core Transaction Data
     const [amount, setAmount] = useState('')
@@ -39,7 +42,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
     // Bolivia Specific
     const [amountBs, setAmountBs] = useState('')
-    const exchangeRateBs = 10.5 // Mock exchange rate
+    const [exchangeRateBs, setExchangeRateBs] = useState(10.5)
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
 
     // Step-by-Step "Pagar al exterior" and "Recibir en Bolivia" states
@@ -88,12 +91,13 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         if (!user) return
         setLoading(true)
 
-        const [routes, transfers, suppliersRes, feeRes, orders] = await Promise.all([
+        const [routes, transfers, suppliersRes, feeRes, orders, settings] = await Promise.all([
             supabase.from('payin_routes').select('*').eq('user_id', user.id),
             supabase.from('bridge_transfers').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
             supabase.from('suppliers').select('*').eq('user_id', user.id),
             getFeeConfig('supplier_payment'),
-            supabase.from('payment_orders').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+            supabase.from('payment_orders').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+            supabase.from('app_settings').select('*')
         ])
 
         if (routes.data) setPayinRoutes(routes.data)
@@ -120,6 +124,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         if (allHistory) setBridgeTransfers(allHistory as any)
         if (suppliersRes.data) setSuppliers(suppliersRes.data)
         if (feeRes) setFeeConfig(feeRes)
+
+        const rateSetting = settings.data?.find(s => s.key === 'bolivia_exchange_rate');
+        if (rateSetting) setExchangeRateBs(Number(rateSetting.value));
+
         setLoading(false)
     }
 
@@ -134,6 +142,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         setError(null)
         setWaitingForEvidence(false)
         setEvidenceFile(null)
+        setIsManagingSuppliers(false)
+        setIsCreatingSupplier(false)
         // Reset new fields
         setFundingMethod('bs')
         setDeliveryMethod('swift')
@@ -340,15 +350,29 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                             Mis Instrucciones
                         </button>
                         <button
-                            onClick={() => setActiveTab('payout')}
+                            onClick={() => { resetFlow(); setIsManagingSuppliers(true); }}
                             style={{
                                 padding: '0.5rem 1.25rem',
                                 borderRadius: '8px',
                                 fontSize: '0.875rem',
                                 fontWeight: 600,
-                                background: activeTab === 'payout' ? '#fff' : 'transparent',
-                                boxShadow: activeTab === 'payout' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                                color: activeTab === 'payout' ? 'var(--secondary)' : 'var(--text-muted)'
+                                background: isManagingSuppliers ? '#fff' : 'transparent',
+                                boxShadow: isManagingSuppliers ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                color: isManagingSuppliers ? 'var(--secondary)' : 'var(--text-muted)'
+                            }}
+                        >
+                            Proveedores
+                        </button>
+                        <button
+                            onClick={() => { resetFlow(); setActiveTab('payout'); }}
+                            style={{
+                                padding: '0.5rem 1.25rem',
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                background: activeTab === 'payout' && !isManagingSuppliers ? '#fff' : 'transparent',
+                                boxShadow: activeTab === 'payout' && !isManagingSuppliers ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                color: activeTab === 'payout' && !isManagingSuppliers ? 'var(--secondary)' : 'var(--text-muted)'
                             }}
                         >
                             Historial
@@ -358,7 +382,94 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
             </div>
 
             <AnimatePresence mode="wait">
-                {selectedRoute === null ? (
+                {isManagingSuppliers ? (
+                    <motion.div key="suppliers" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="premium-card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <h3 style={{ margin: 0, fontWeight: 700 }}>Agenda de Proveedores</h3>
+                            <button onClick={() => setIsCreatingSupplier(true)} className="btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>+ Nuevo Proveedor</button>
+                        </div>
+
+                        {isCreatingSupplier && (
+                            <div style={{ background: '#F8FAFC', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
+                                <h4 style={{ marginTop: 0 }}>Nuevo Proveedor</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    <div className="input-group">
+                                        <label>Nombre / Razón Social</label>
+                                        <input value={newSupplier.name} onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
+                                    </div>
+                                    <div className="input-group">
+                                        <label>País del Banco</label>
+                                        <input value={newSupplier.bank_country} onChange={e => setNewSupplier({ ...newSupplier, bank_country: e.target.value })} />
+                                    </div>
+                                    <div className="input-group">
+                                        <label>Nombre del Banco</label>
+                                        <input value={newSupplier.bank_name} onChange={e => setNewSupplier({ ...newSupplier, bank_name: e.target.value })} />
+                                    </div>
+                                    <div className="input-group">
+                                        <label>SWIFT / Routing</label>
+                                        <input value={newSupplier.swift_code} onChange={e => setNewSupplier({ ...newSupplier, swift_code: e.target.value })} />
+                                    </div>
+                                    <div className="input-group">
+                                        <label>Número de Cuenta / IBAN</label>
+                                        <input value={newSupplier.account_number} onChange={e => setNewSupplier({ ...newSupplier, account_number: e.target.value })} />
+                                    </div>
+                                    <div className="input-group">
+                                        <label>Dirección Cripto (opcional)</label>
+                                        <input value={newSupplier.crypto_address} onChange={e => setNewSupplier({ ...newSupplier, crypto_address: e.target.value })} />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                                    <button
+                                        onClick={async () => {
+                                            if (!user || !newSupplier.name) return alert('Nombre es obligatorio');
+                                            setLoading(true);
+                                            const payload = {
+                                                user_id: user.id,
+                                                name: newSupplier.name,
+                                                country: newSupplier.bank_country,
+                                                bank_details: {
+                                                    bank_name: newSupplier.bank_name,
+                                                    swift_code: newSupplier.swift_code,
+                                                    account_number: newSupplier.account_number,
+                                                    bank_country: newSupplier.bank_country
+                                                },
+                                                crypto_details: {
+                                                    address: newSupplier.crypto_address
+                                                }
+                                            };
+                                            const { error } = await supabase.from('suppliers').insert([payload]);
+                                            if (error) alert(error.message);
+                                            else {
+                                                setIsCreatingSupplier(false);
+                                                setNewSupplier({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '' });
+                                                fetchPaymentsData();
+                                            }
+                                            setLoading(false);
+                                        }}
+                                        className="btn-primary"
+                                        disabled={loading}
+                                    >
+                                        {loading ? 'Guardando...' : 'Crear Proveedor'}
+                                    </button>
+                                    <button onClick={() => setIsCreatingSupplier(false)} className="btn-secondary">Cancelar</button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                            {suppliers.map(s => (
+                                <div key={s.id} style={{ padding: '1rem', border: '1px solid var(--border)', borderRadius: '12px', background: '#fff' }}>
+                                    <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>{s.name}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                        {s.bank_details?.bank_name} • {s.country}<br />
+                                        {s.bank_details?.account_number || s.crypto_details?.address}
+                                    </div>
+                                </div>
+                            ))}
+                            {suppliers.length === 0 && !isCreatingSupplier && <div style={{ gridColumn: '1/-1', textAlign: 'center', opacity: 0.5, padding: '2rem' }}>No tienes proveedores registrados.</div>}
+                        </div>
+                    </motion.div>
+                ) : selectedRoute === null ? (
                     <motion.div key="selector" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                         <h3 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>Selecciona una Ruta de Pago</h3>
                         <div style={{
@@ -533,7 +644,31 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
                                             <div className="input-group">
                                                 <label style={{ fontWeight: 700 }}>Proveedor / Beneficiario</label>
-                                                <select value={selectedSupplier?.id || ''} onChange={e => setSelectedSupplier(suppliers.find(s => s.id === e.target.value))} style={{ width: '100%', padding: '0.75rem' }}>
+                                                <select
+                                                    value={selectedSupplier?.id || ''}
+                                                    onChange={e => {
+                                                        const s = suppliers.find(sup => sup.id === e.target.value);
+                                                        setSelectedSupplier(s);
+                                                        if (s) {
+                                                            if (s.bank_details) {
+                                                                setSwiftDetails({
+                                                                    bankName: s.bank_details.bank_name || '',
+                                                                    swiftCode: s.bank_details.swift_code || '',
+                                                                    iban: s.bank_details.account_number || '',
+                                                                    bankAddress: '',
+                                                                    country: s.country || ''
+                                                                });
+                                                            }
+                                                            if (s.crypto_details) {
+                                                                setCryptoDestination({
+                                                                    address: s.crypto_details.address || '',
+                                                                    network: 'ethereum'
+                                                                });
+                                                            }
+                                                        }
+                                                    }}
+                                                    style={{ width: '100%', padding: '0.75rem' }}
+                                                >
                                                     <option value="">-- Seleccionar --</option>
                                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                                 </select>
@@ -594,13 +729,27 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         </div>
                                     )}
 
+                                    <div style={{ background: '#F1F5F9', padding: '1rem', borderRadius: '12px', fontSize: '0.85rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Comisión estimada:</span>
+                                            <span style={{ fontWeight: 700 }}>{calculatedFeeValue.toFixed(2)} {currency}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Llegará al proveedor:</span>
+                                            <span style={{ fontWeight: 700, color: 'var(--success)' }}>{netAmountValue.toFixed(2)} {currency}</span>
+                                        </div>
+                                    </div>
+
                                     <button
                                         onClick={() => setStep(3)}
-                                        disabled={!amount || (selectedRoute === 'bolivia_to_exterior' && (!paymentReason || !supportDocument)) || loading}
+                                        disabled={
+                                            (selectedRoute === 'bolivia_to_exterior' && (!amount || !paymentReason || !supportDocument)) ||
+                                            loading
+                                        }
                                         className="btn-primary"
                                         style={{ marginTop: '1rem' }}
                                     >
-                                        Continuar a Revisión
+                                        {(selectedRoute !== 'bolivia_to_exterior' && !amount) ? 'Solicitar Instrucciones' : 'Continuar a Revisión'}
                                     </button>
                                 </div>
                             )}

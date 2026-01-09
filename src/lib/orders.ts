@@ -32,8 +32,8 @@ export interface CreateOrderParams {
     amountOrigin: number
     originCurrency: string
     destinationCurrency: string
-    beneficiaryId?: string
-    supplierId?: string
+    beneficiaryId?: string | null
+    supplierId?: string | null
     amountConverted?: number
     exchangeRate?: number
     feeTotal?: number
