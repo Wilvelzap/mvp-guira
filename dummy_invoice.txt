@@ -1,0 +1,4 @@
+Test Invoice Content
+Amount: 100 USD
+Supplier: Test Supplier
+Description: Verification of payment registration system.

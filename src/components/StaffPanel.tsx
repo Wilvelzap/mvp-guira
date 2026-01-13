@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 export const StaffPanel: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'orders' | 'config'>('onboarding')
     const [items, setItems] = useState<any[]>([])
+    const [isLoadingData, setIsLoadingData] = useState(false)
     const [selectedItem, setSelectedItem] = useState<any>(null)
     const [searchQuery, setSearchQuery] = useState('')
 
@@ -69,6 +70,8 @@ export const StaffPanel: React.FC = () => {
     }, [activeTab])
 
     const fetchData = async () => {
+        setIsLoadingData(true)
+        setItems([]) // Clear current items to avoid ghost data
         let query: any
 
         if (activeTab === 'onboarding') {
@@ -78,7 +81,7 @@ export const StaffPanel: React.FC = () => {
         } else if (activeTab === 'transfers') {
             query = supabase.from('bridge_transfers').select('*, profiles(email)').order('created_at', { ascending: false })
         } else if (activeTab === 'orders') {
-            query = supabase.from('payment_orders').select('*, profiles(email)').order('created_at', { ascending: false })
+            query = supabase.from('payment_orders').select('*, profiles!user_id(email)').order('created_at', { ascending: false })
         } else if (activeTab === 'config') {
             const { data: feeData } = await supabase.from('fees_config').select('*')
             if (feeData) setFees(feeData)
@@ -88,8 +91,17 @@ export const StaffPanel: React.FC = () => {
             return
         }
 
-        const { data } = await query
-        if (data) setItems(data)
+        try {
+            const { data, error } = await query
+            if (error) {
+                console.error('Error fetching data:', error)
+            }
+            setItems(data || [])
+        } catch (err) {
+            console.error('Fetch operation failed:', err)
+        } finally {
+            setIsLoadingData(false)
+        }
     }
 
     const handleUpdateStatus = async (id: string, table: string, status: string, additionalData: any = {}, reason: string = '') => {
@@ -729,9 +741,22 @@ export const StaffPanel: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {items
+                                    {isLoadingData ? (
+                                        <tr>
+                                            <td colSpan={4} style={{ padding: '3rem', textAlign: 'center' }}>
+                                                <div className="loading-spinner" style={{ margin: '0 auto 1rem' }}></div>
+                                                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Cargando datos...</p>
+                                            </td>
+                                        </tr>
+                                    ) : items.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                No se encontraron registros.
+                                            </td>
+                                        </tr>
+                                    ) : items
                                         .filter(item => {
-                                            const matchesSearch = item.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase())
+                                            const matchesSearch = (item.profiles?.email || 'Sistema').toLowerCase().includes(searchQuery.toLowerCase())
                                             const matchesStatus = statusFilter === 'all' || item.status === statusFilter
                                             const matchesRail = railFilter === 'all' || item.processing_rail === railFilter
                                             return matchesSearch && matchesStatus && matchesRail

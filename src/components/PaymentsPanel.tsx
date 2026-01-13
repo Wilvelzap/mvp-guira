@@ -27,6 +27,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const [isManagingSuppliers, setIsManagingSuppliers] = useState(false)
     const [isCreatingSupplier, setIsCreatingSupplier] = useState(false)
     const [newSupplier, setNewSupplier] = useState({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '' })
+    const [operationType, setOperationType] = useState<null | 'receive' | 'send'>(null)
 
     // Core Transaction Data
     const [amount, setAmount] = useState('')
@@ -152,6 +153,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         setAchDetails({ routingNumber: '', accountNumber: '', bankName: '' })
         setSwiftDetails({ bankName: '', swiftCode: '', iban: '', bankAddress: '', country: '' })
         setCryptoDestination({ address: '', network: 'ethereum' })
+        setOperationType(null)
     }
 
     const handleUploadEvidence = async () => {
@@ -399,18 +401,34 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     </div>
                                     <div className="input-group">
                                         <label>País del Banco</label>
-                                        <input value={newSupplier.bank_country} onChange={e => setNewSupplier({ ...newSupplier, bank_country: e.target.value })} />
+                                        <select
+                                            value={newSupplier.bank_country}
+                                            onChange={e => setNewSupplier({ ...newSupplier, bank_country: e.target.value })}
+                                            style={{ width: '100%', padding: '0.75rem' }}
+                                        >
+                                            <option value="">-- Seleccionar País --</option>
+                                            <option value="Estados Unidos">Estados Unidos</option>
+                                            <option value="España">España</option>
+                                            <option value="Bolivia">Bolivia</option>
+                                            <option value="Reino Unido">Reino Unido</option>
+                                            <option value="Panamá">Panamá</option>
+                                            <option value="Otro">Otro</option>
+                                        </select>
                                     </div>
                                     <div className="input-group">
                                         <label>Nombre del Banco</label>
                                         <input value={newSupplier.bank_name} onChange={e => setNewSupplier({ ...newSupplier, bank_name: e.target.value })} />
                                     </div>
                                     <div className="input-group">
-                                        <label>SWIFT / Routing</label>
+                                        <label>
+                                            {newSupplier.bank_country === 'Estados Unidos' ? 'Routing Number' : 'SWIFT / BIC Code'}
+                                        </label>
                                         <input value={newSupplier.swift_code} onChange={e => setNewSupplier({ ...newSupplier, swift_code: e.target.value })} />
                                     </div>
                                     <div className="input-group">
-                                        <label>Número de Cuenta / IBAN</label>
+                                        <label>
+                                            {newSupplier.bank_country === 'Estados Unidos' ? 'Account Number' : ['España', 'Reino Unido'].includes(newSupplier.bank_country) ? 'IBAN' : 'Número de Cuenta'}
+                                        </label>
                                         <input value={newSupplier.account_number} onChange={e => setNewSupplier({ ...newSupplier, account_number: e.target.value })} />
                                     </div>
                                     <div className="input-group">
@@ -471,96 +489,147 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                     </motion.div>
                 ) : selectedRoute === null ? (
                     <motion.div key="selector" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                        <h3 style={{ marginBottom: '1.5rem', fontWeight: 700 }}>Selecciona una Ruta de Pago</h3>
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
-                            gap: '1rem'
-                        }}>
-                            <div
-                                onClick={() => { setSelectedRoute('bolivia_to_exterior'); setStep(2); }}
-                                className="premium-card clickable-card"
-                                style={{
-                                    cursor: 'pointer',
-                                    padding: '2rem',
-                                    textAlign: 'center',
-                                    background: '#ffffff',
-                                    border: '1px solid #E2E8F0',
-                                    transition: 'transform 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🇧🇴</div>
-                                <h4 style={{ margin: 0, fontWeight: 700 }}>Pagar al exterior</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                    Envía Bs a cuentas bancarias internacionales.
-                                </p>
-                            </div>
-
-                            <div
-                                onClick={() => { setSelectedRoute('us_to_wallet'); setStep(2); }}
-                                className="premium-card clickable-card"
-                                style={{
-                                    cursor: 'pointer',
-                                    padding: '2rem',
-                                    textAlign: 'center',
-                                    background: '#ffffff',
-                                    border: '1px solid #E2E8F0',
-                                    transition: 'transform 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🇺🇸</div>
-                                <h4 style={{ margin: 0, fontWeight: 700 }}>Recibir desde EE.UU.</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                    Recibe USD en tu billetera como USDC/USDT.
-                                </p>
-                            </div>
-
-                            <div
-                                onClick={() => { setSelectedRoute('crypto_to_crypto'); setStep(2); }}
-                                className="premium-card clickable-card"
-                                style={{
-                                    cursor: 'pointer',
-                                    padding: '2rem',
-                                    textAlign: 'center',
-                                    background: '#ffffff',
-                                    border: '1px solid #E2E8F0',
-                                    transition: 'transform 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
-                                <h4 style={{ margin: 0, fontWeight: 700 }}>Enviar cripto</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                    Transferencias rápidas entre redes.
-                                </p>
-                            </div>
-
-                            <div
-                                onClick={() => { setSelectedRoute('us_to_bolivia'); setFundingMethod('crypto'); setStep(2); }}
-                                className="premium-card clickable-card"
-                                style={{
-                                    cursor: 'pointer',
-                                    padding: '2rem',
-                                    textAlign: 'center',
-                                    background: '#ffffff',
-                                    border: '1px solid #E2E8F0',
-                                    transition: 'transform 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-5px)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🚀</div>
-                                <h4 style={{ margin: 0, fontWeight: 700 }}>Recibir en Bolivia</h4>
-                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                                    Liquida tus USD/USDC directamente en tu banco.
-                                </p>
-                            </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                            <h3 style={{ margin: 0, fontWeight: 700 }}>
+                                {operationType === null && 'Selecciona el tipo de operación'}
+                                {operationType === 'receive' && 'Recibir pagos'}
+                                {operationType === 'send' && 'Enviar pagos'}
+                            </h3>
+                            {operationType !== null && (
+                                <button
+                                    onClick={() => setOperationType(null)}
+                                    style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                >
+                                    <ChevronLeft size={16} /> Volver
+                                </button>
+                            )}
                         </div>
+
+                        {operationType === null ? (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+                                gap: '1.5rem'
+                            }}>
+                                <div
+                                    onClick={() => setOperationType('receive')}
+                                    className="premium-card clickable-card"
+                                    style={{
+                                        cursor: 'pointer',
+                                        padding: '2.5rem',
+                                        textAlign: 'center',
+                                        background: '#ffffff',
+                                        border: '1px solid #E2E8F0',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        gap: '1rem'
+                                    }}
+                                >
+                                    <div style={{ fontSize: '3.5rem' }}>💰</div>
+                                    <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Recibir pagos</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                                        Crea rutas de llegada vía ACH, Wire o Cripto hacia tu billetera.
+                                    </p>
+                                </div>
+
+                                <div
+                                    onClick={() => setOperationType('send')}
+                                    className="premium-card clickable-card"
+                                    style={{
+                                        cursor: 'pointer',
+                                        padding: '2.5rem',
+                                        textAlign: 'center',
+                                        background: '#ffffff',
+                                        border: '1px solid #E2E8F0',
+                                        transition: 'all 0.2s',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        gap: '1rem'
+                                    }}
+                                >
+                                    <div style={{ fontSize: '3.5rem' }}>📤</div>
+                                    <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Enviar pagos</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                                        Paga facturas o a proveedores vía SWIFT o ACH (USA).
+                                    </p>
+                                </div>
+                            </div>
+                        ) : operationType === 'receive' ? (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
+                                gap: '1rem'
+                            }}>
+                                <div
+                                    onClick={() => { setSelectedRoute('us_to_wallet'); setStep(2); }}
+                                    className="premium-card clickable-card"
+                                    style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
+                                >
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🇺🇸</div>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde ACH/Wire (USA)</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        Recibe USD en tu billetera como USDC/USDT.
+                                    </p>
+                                </div>
+
+                                <div
+                                    onClick={() => { setSelectedRoute('crypto_to_crypto'); setStep(2); }}
+                                    className="premium-card clickable-card"
+                                    style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
+                                >
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🔗</div>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde Cripto</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        Ingresa fondos directamente en USDC.
+                                    </p>
+                                </div>
+
+                                <div
+                                    onClick={() => { setSelectedRoute('us_to_bolivia'); setFundingMethod('wallet'); setStep(2); }}
+                                    className="premium-card clickable-card"
+                                    style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
+                                >
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🚀</div>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Liquidar en Bolivia</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        Recibe Bs directamente en tu banco.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))',
+                                gap: '1rem'
+                            }}>
+                                <div
+                                    onClick={() => { setSelectedRoute('bolivia_to_exterior'); setFundingMethod('bs'); setStep(2); }}
+                                    className="premium-card clickable-card"
+                                    style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
+                                >
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🇧🇴</div>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde Bs (Bolivia)</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        Envía Bs a cuentas internacionales (SWIFT).
+                                    </p>
+                                </div>
+
+                                <div
+                                    onClick={() => { setSelectedRoute('bolivia_to_exterior'); setFundingMethod('wallet'); setStep(2); }}
+                                    className="premium-card clickable-card"
+                                    style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
+                                >
+                                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💼</div>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde Billetera</h4>
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        Usa tu saldo USDC para pagar al exterior.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </motion.div>
                 ) : (
                     <motion.div key="form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="premium-card" style={{ background: '#F8FAFC' }}>
@@ -651,12 +720,18 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                         setSelectedSupplier(s);
                                                         if (s) {
                                                             if (s.bank_details) {
-                                                                setSwiftDetails({
+                                                                const bRes = {
                                                                     bankName: s.bank_details.bank_name || '',
                                                                     swiftCode: s.bank_details.swift_code || '',
                                                                     iban: s.bank_details.account_number || '',
                                                                     bankAddress: '',
                                                                     country: s.country || ''
+                                                                };
+                                                                setSwiftDetails(bRes);
+                                                                setAchDetails({
+                                                                    bankName: bRes.bankName,
+                                                                    routingNumber: bRes.swiftCode,
+                                                                    accountNumber: bRes.iban
                                                                 });
                                                             }
                                                             if (s.crypto_details) {
@@ -673,6 +748,29 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                                 </select>
                                             </div>
+
+                                            {selectedSupplier && (
+                                                <div style={{ background: '#F0F9FF', padding: '1.25rem', borderRadius: '16px', border: '1px solid #BAE6FD', marginBottom: '1.5rem', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Datos del Beneficiario</div>
+                                                        <div style={{ fontSize: '0.7rem', background: '#0369A1', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{selectedSupplier.country}</div>
+                                                    </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '0.9rem' }}>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '0.1rem' }}>BANCO</div>
+                                                            <div style={{ fontWeight: 700 }}>{selectedSupplier.bank_details?.bank_name || '---'}</div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '0.1rem' }}>{selectedSupplier.country === 'Estados Unidos' ? 'ROUTING' : 'SWIFT/BIC'}</div>
+                                                            <div style={{ fontWeight: 700 }}>{selectedSupplier.bank_details?.swift_code || '---'}</div>
+                                                        </div>
+                                                        <div style={{ gridColumn: 'span 2' }}>
+                                                            <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '0.1rem' }}>NÚMERO DE CUENTA / IBAN</div>
+                                                            <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '1rem' }}>{selectedSupplier.bank_details?.account_number || '---'}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className="input-group">
                                                 <label style={{ fontWeight: 700 }}>Motivo del pago</label>
