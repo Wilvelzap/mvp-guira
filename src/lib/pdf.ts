@@ -32,7 +32,7 @@ export function generatePaymentPDF(data: PaymentDocData) {
     if (data.isManual) {
         doc.setFontSize(8)
         doc.setTextColor(153, 27, 27) // Red-800
-        doc.text('ORDEN CREADA MANUALMENTE', 150, 28)
+        doc.text('EXPEDIENTE CREADO MANUALMENTE', 150, 28)
     }
 
     // Divider
@@ -52,22 +52,22 @@ export function generatePaymentPDF(data: PaymentDocData) {
         y += 10
     }
 
-    addRow('ID Orden Guira', data.id)
-    addRow('Cliente', data.userName)
-    addRow('Proveedor / Beneficiario', data.supplierName)
-    addRow('Fecha de Proceso', new Date(data.date).toLocaleString())
-    addRow('Método de Procesamiento', (data.type ? String(data.type).replace(/_/g, ' ') : '').toUpperCase())
-    addRow('Monto Original', `${data.amount.toLocaleString()} ${data.currency}`)
+    addRow('Referencia de Expediente', data.id)
+    addRow('Sujeto de Operación', data.userName)
+    addRow('Contraparte / Beneficiario', data.supplierName)
+    addRow('Fecha de Gestión', new Date(data.date).toLocaleString())
+    addRow('Riel Financiero', (data.type ? String(data.type).replace(/_/g, ' ') : '').toUpperCase())
+    addRow('Volumen Declarado', `${data.amount.toLocaleString()} ${data.currency}`)
 
     if (data.exchangeRate && data.exchangeRate !== 1) {
         addRow('Tipo de Cambio', data.exchangeRate.toString())
     }
 
-    addRow('Comisión Guira (Fees)', `${data.fee.toLocaleString()} ${data.currency}`)
-    addRow('Monto Final Liquidado', `${data.netAmount.toLocaleString()} ${data.currency}`)
-    if (data.rail) addRow('Riel de Pago', data.rail)
-    if (data.reference) addRow('Referencia / Hash', data.reference)
-    addRow('Motivo del Pago', data.paymentReason || 'Importación de servicios / Pago internacional')
+    addRow('Costo de Orquestación (Fees)', `${data.fee.toLocaleString()} ${data.currency}`)
+    addRow('Volumen Verificado en Riel', `${data.netAmount.toLocaleString()} ${data.currency}`)
+    if (data.rail) addRow('Riel de Salida', data.rail)
+    if (data.reference) addRow('Referencia de Riel / Hash', data.reference)
+    addRow('Justificación de Operación', data.paymentReason || 'Operación internacional documentada')
 
     // Footer
     doc.setFontSize(8)
@@ -77,5 +77,5 @@ export function generatePaymentPDF(data: PaymentDocData) {
     doc.text('Los movimientos de dinero fueron ejecutados directamente a través de los rieles financieros indicados.', 20, 280)
     doc.text(`Generado automáticamente por Guira el ${new Date().toLocaleString()}`, 20, 285)
 
-    doc.save(`Pago_Guira_${data.id.slice(0, 8)}.pdf`)
+    doc.save(`Expediente_Guira_${data.id.slice(0, 8)}.pdf`)
 }

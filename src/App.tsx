@@ -19,7 +19,7 @@ import {
 
 const AppContent = () => {
   const { session, profile, isRecovering, signOut } = useAuth()
-  const [activeTab, setActiveTab] = useState<'wallet' | 'payments' | 'activity' | 'staff'>('wallet')
+  const [activeTab, setActiveTab] = useState<'operations' | 'management' | 'activity' | 'staff'>('operations')
   const [paymentIntent, setPaymentIntent] = useState<any>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
@@ -108,18 +108,18 @@ const AppContent = () => {
           {profile.role === 'client' && (
             <>
               <button
-                onClick={() => handleNavigate('wallet')}
-                className={`nav-item ${activeTab === 'wallet' ? 'active' : ''}`}
+                onClick={() => handleNavigate('operations')}
+                className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`}
               >
-                <Wallet size={20} /> Mi Billetera
-                {activeTab === 'wallet' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
+                <Wallet size={20} /> Control Operativo
+                {activeTab === 'operations' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
               </button>
               <button
-                onClick={() => handleNavigate('payments', null)}
-                className={`nav-item ${activeTab === 'payments' ? 'active' : ''}`}
+                onClick={() => handleNavigate('management', null)}
+                className={`nav-item ${activeTab === 'management' ? 'active' : ''}`}
               >
-                <CreditCard size={20} /> Pagos
-                {activeTab === 'payments' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
+                <CreditCard size={20} /> Gestiones
+                {activeTab === 'management' && <ChevronRight size={16} style={{ marginLeft: 'auto' }} />}
               </button>
               <button
                 onClick={() => handleNavigate('activity')}
@@ -144,7 +144,8 @@ const AppContent = () => {
 
         <div style={{ marginTop: 'auto', padding: '1rem', borderTop: '1px solid var(--border)' }}>
           <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile.email}</p>
+            <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.2rem' }}>{profile.full_name || profile.email.split('@')[0]}</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '0.2rem' }}>{profile.email}</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
               {profile.role === 'admin' ? 'Administrador' : profile.role === 'staff' ? 'Staff' : 'Cliente'}
             </p>
@@ -158,8 +159,8 @@ const AppContent = () => {
       {/* Main Content */}
       <main className="main-content">
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-          {activeTab === 'wallet' && <WalletDashboard onNavigate={handleNavigate} />}
-          {activeTab === 'payments' && <PaymentsPanel initialRoute={paymentIntent} onRouteClear={() => setPaymentIntent(null)} />}
+          {activeTab === 'operations' && <WalletDashboard onNavigate={handleNavigate} />}
+          {activeTab === 'management' && <PaymentsPanel initialRoute={paymentIntent} onRouteClear={() => setPaymentIntent(null)} />}
           {activeTab === 'activity' && <ActivityLog />}
           {activeTab === 'staff' && <StaffPanel />}
         </div>

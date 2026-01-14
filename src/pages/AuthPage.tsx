@@ -75,8 +75,8 @@ export const AuthPage: React.FC = () => {
     }
 
     const getSubtitle = () => {
-        if (authMode === 'login') return 'Accede a tu cuenta de Guira'
-        if (authMode === 'signup') return 'Crea tu cuenta de negocios hoy'
+        if (authMode === 'login') return 'Accede a tu panel de orquestación'
+        if (authMode === 'signup') return 'Crea tu perfil operativo hoy'
         if (authMode === 'recovery') return 'Enviaremos un enlace a tu correo'
         if (!session) return 'Validando sesión de recuperación...'
         return 'Ingresa tu nueva contraseña para continuar'

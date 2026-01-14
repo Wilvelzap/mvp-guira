@@ -194,10 +194,17 @@ export const OnboardingFlow: React.FC = () => {
 
             if (upsertError) throw upsertError
 
-            // 2. Sync Profile Status
+            // 2. Sync Profile Status and Name
+            const fullName = type === 'personal'
+                ? `${finalData.first_names} ${finalData.last_names}`.trim()
+                : finalData.company_legal_name;
+
             await supabase
                 .from('profiles')
-                .update({ onboarding_status: 'submitted' })
+                .update({
+                    onboarding_status: 'submitted',
+                    full_name: fullName || null
+                })
                 .eq('id', user.id)
 
             await logActivity(user.id, 'enviar_onboarding', { type })
@@ -322,13 +329,13 @@ export const OnboardingFlow: React.FC = () => {
                 </div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginBottom: '1rem' }}>{current.text}</h2>
                 <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
-                    {status === 'submitted' && 'Estamos procesando tu solicitud de cumplimiento. Esto suele tardar entre 24 y 48 horas laborales.'}
-                    {status === 'under_review' && 'Un oficial de cumplimiento está revisando tu documentación detallada actualmente.'}
-                    {status === 'verified' && '¡Tu cuenta ha sido verificada con éxito! Ya puedes comenzar a utilizar todas las funciones de Guira.'}
-                    {status === 'rejected' && 'Lamentablemente, no pudimos verificar tu cuenta en este momento. Revisa tu correo para más detalles.'}
+                    {status === 'submitted' && 'Estamos validando tu información para la habilitación de operaciones. Esto suele tardar entre 24 y 48 horas laborales.'}
+                    {status === 'under_review' && 'Un oficial de cumplimiento está verificando la coherencia de tu documentación detallada actualmente.'}
+                    {status === 'verified' && '¡Tu perfil ha sido validado con éxito! Ya puedes comenzar a orquestar tus operaciones en Guira.'}
+                    {status === 'rejected' && 'Lamentablemente, no pudimos validar tu perfil en este momento. Revisa tu correo para más detalles.'}
                 </p>
                 {status === 'verified' && (
-                    <button onClick={() => window.location.reload()} className="btn-primary">Ir a mi Billetera</button>
+                    <button onClick={() => window.location.reload()} className="btn-primary">Ir a Control Operativo</button>
                 )}
                 {status === 'rejected' && (
                     <button onClick={handleRetry} disabled={loading} className="btn-primary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0 auto' }}>
@@ -401,7 +408,7 @@ export const OnboardingFlow: React.FC = () => {
         return (
             <div style={{ maxWidth: '800px', margin: '2rem auto' }}>
                 <h1 style={{ fontSize: '2.5rem', fontWeight: 800, textAlign: 'center', marginBottom: '1rem' }}>Comienza Ahora</h1>
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '3.5rem' }}>Selecciona el tipo de cuenta que deseas abrir para comenzar el proceso de cumplimiento.</p>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginBottom: '3.5rem' }}>Selecciona tu perfil para iniciar el proceso de validación documental y habilitación de rieles.</p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                     <motion.button
@@ -414,8 +421,8 @@ export const OnboardingFlow: React.FC = () => {
                             <User size={40} />
                         </div>
                         <div style={{ textAlign: 'center' }}>
-                            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Cuenta Personal</h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Para individuos que buscan enviar y recibir pagos globales de forma segura.</p>
+                            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Perfil Personal</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Para individuos que buscan documentar y orquestar operaciones internacionales de forma segura.</p>
                         </div>
                     </motion.button>
 
@@ -429,8 +436,8 @@ export const OnboardingFlow: React.FC = () => {
                             <Building2 size={40} />
                         </div>
                         <div style={{ textAlign: 'center' }}>
-                            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Cuenta de Empresa</h3>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Para empresas registradas y entidades legales con operaciones internacionales.</p>
+                            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Perfil de Empresa</h3>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Para empresas registradas y entidades legales con necesidad de trazabilidad operativa.</p>
                         </div>
                     </motion.button>
                 </div>
@@ -449,7 +456,7 @@ export const OnboardingFlow: React.FC = () => {
                         <ChevronLeft size={16} /> Cambiar Tipo de Cuenta
                     </button>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: '0.5rem' }}>
-                        {type === 'personal' ? 'Verificación KYC Completa' : 'Onboarding KYB Corporativo'}
+                        {type === 'personal' ? 'Validación de Identidad (KYC)' : 'Habilitación Corporativa (KYB)'}
                     </h2>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -466,7 +473,7 @@ export const OnboardingFlow: React.FC = () => {
                     {/* Step 1: Names and Identification */}
                     {step === 1 && (
                         <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-                            <h3 className="form-section-title"><User size={20} /> Identidad del {type === 'personal' ? 'Titular' : 'Representante Legal'}</h3>
+                            <h3 className="form-section-title"><User size={20} /> Sujeto de Operación ({type === 'personal' ? 'Titular' : 'Representante Legal'})</h3>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
                                 <div>
                                     <label className="input-label">Nombres Completos</label>
@@ -572,7 +579,7 @@ export const OnboardingFlow: React.FC = () => {
                                     <textarea
                                         value={formData.purpose}
                                         onChange={e => setFormData({ ...formData, purpose: e.target.value })}
-                                        placeholder="Ej: Pago a proveedores internacionales, recepción de honorarios, ahorros en USD..."
+                                        placeholder="Ej: Documentación de operaciones internacionales, cumplimiento operativo, gestión de expedientes..."
                                         style={{ minHeight: '100px' }}
                                     />
                                 </div>

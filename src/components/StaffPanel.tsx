@@ -19,7 +19,7 @@ import { registerAuditLog } from '../lib/audit'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export const StaffPanel: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'orders' | 'config'>('onboarding')
+    const [activeTab, setActiveTab] = useState<'onboarding' | 'payins' | 'transfers' | 'orders' | 'config'>('orders')
     const [items, setItems] = useState<any[]>([])
     const [isLoadingData, setIsLoadingData] = useState(false)
     const [selectedItem, setSelectedItem] = useState<any>(null)
@@ -111,7 +111,7 @@ export const StaffPanel: React.FC = () => {
         // Validación de retroceso (Admin solo)
         if (status === 'created' && item.status !== 'created' && ['deposit_received', 'processing', 'completed'].includes(item.status)) {
             if (userRole !== 'admin') {
-                alert('Solo los administradores pueden retroceder estados de órdenes fondeadas.')
+                alert('Solo los administradores pueden retroceder estados de expedientes fondeados.')
                 return
             }
         }
@@ -143,7 +143,16 @@ export const StaffPanel: React.FC = () => {
 
             if (table === 'onboarding') {
                 const profileStatus = status === 'verified' ? 'verified' : (status === 'rejected' ? 'rejected' : status)
-                await supabase.from('profiles').update({ onboarding_status: profileStatus }).eq('id', item.user_id)
+
+                let updatePayload: any = { onboarding_status: profileStatus };
+                if (status === 'verified' && item.data) {
+                    const fullName = item.type === 'personal'
+                        ? `${item.data.first_names || ''} ${item.data.last_names || ''}`.trim()
+                        : item.data.company_legal_name;
+                    if (fullName) updatePayload.full_name = fullName;
+                }
+
+                await supabase.from('profiles').update(updatePayload).eq('id', item.user_id)
 
                 if (status === 'verified') {
                     const { data: wallets } = await supabase.from('wallets').select('id').eq('user_id', item.user_id).limit(1)
@@ -285,33 +294,41 @@ export const StaffPanel: React.FC = () => {
     const translateStatus = (status: string) => {
         if (!status) return 'Estado'
         const statuses: any = {
-            'submitted': 'Enviado',
-            'active': 'Activo',
-            'paid': 'Pagado',
+            'submitted': 'En Revisión Documental',
+            'active': 'Riel Habilitado',
+            'paid': 'Acreditado',
             'pending': 'Pendiente',
-            'rejected': 'Rechazado',
-            'verified': 'Verificado',
-            'under_review': 'En Revisión',
-            'inactive': 'Desactivada',
+            'request_payin': 'Ruta de Depósito Solicitada',
+            'request_payout': 'Retiro Solicitado',
+            'login': 'Inicio de Sesión',
+            'signup': 'Registro de Cuenta',
+            'change_status': 'Cambio de Estado Administrativo',
+            'create_manual': 'Registro Manual Creado',
+            'update_payment_order': 'Expediente Actualizado',
+            'upload_staff_document': 'Documento de Trazabilidad Cargado',
+            'rejected': 'Observado',
+            'verified': 'Documentación Validada',
+            'under_review': 'En Validación',
+            'inactive': 'Inhabilitado',
             'waiting_ubo_kyc': 'Esperando KYC Socios',
-            'kyb_passed': 'Empresa Aprobada',
-            'created': 'Creada',
-            'waiting_deposit': 'Esperando Depósito',
-            'deposit_received': 'Depósito Recibido',
-            'processing': 'Procesando',
-            'completed': 'Completado',
-            'failed': 'Fallido'
+            'kyb_passed': 'Empresa Validada',
+            'created': 'Expediente Iniciado',
+            'waiting_deposit': 'Esperando Acreditación',
+            'deposit_received': 'Acreditación Detectada',
+            'processing': 'Procesando Documentación',
+            'completed': 'Expediente Cerrado',
+            'failed': 'Inconsistencia Detectada'
         }
         return statuses[status] || status
     }
 
     const translateOrderType = (type: string) => {
-        if (!type) return 'Orden'
+        if (!type) return 'Expediente'
         const types: any = {
-            'BO_TO_WORLD': 'Pagar al Exterior',
-            'WORLD_TO_BO': 'Recibir en Bolivia',
-            'US_TO_WALLET': 'Recibir desde EE.UU.',
-            'CRYPTO_TO_CRYPTO': 'Enviar Cripto'
+            'BO_TO_WORLD': 'Gestión al Exterior',
+            'WORLD_TO_BO': 'Gestión de Recepción',
+            'US_TO_WALLET': 'Recepción EE.UU. a Riel Digital',
+            'CRYPTO_TO_CRYPTO': 'Gestión Digital'
         }
         return types[type] || type
     }
@@ -388,16 +405,16 @@ export const StaffPanel: React.FC = () => {
                     scrollbarWidth: 'none'
                 }}>
                     <button onClick={() => setActiveTab('onboarding')} className={`nav-item ${activeTab === 'onboarding' ? 'active' : ''}`}>
-                        <Users size={18} /> Onboarding
+                        <Users size={18} /> Validación Identidad
                     </button>
                     <button onClick={() => setActiveTab('payins')} className={`nav-item ${activeTab === 'payins' ? 'active' : ''}`}>
-                        <ArrowDownLeft size={18} /> Rutas
+                        <ArrowDownLeft size={18} /> Registros de Riel
                     </button>
                     <button onClick={() => setActiveTab('transfers')} className={`nav-item ${activeTab === 'transfers' ? 'active' : ''}`}>
                         <ArrowUpRight size={18} /> Transfers
                     </button>
                     <button onClick={() => setActiveTab('orders')} className={`nav-item ${activeTab === 'orders' ? 'active' : ''}`}>
-                        <Box size={18} /> Órdenes
+                        <Box size={18} /> Expedientes
                     </button>
                     <button onClick={() => setActiveTab('config')} className={`nav-item ${activeTab === 'config' ? 'active' : ''}`}>
                         <Shield size={18} /> Configuración
@@ -765,10 +782,19 @@ export const StaffPanel: React.FC = () => {
                                             <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                                                 <td style={{ padding: '1.25rem' }}>
                                                     <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600 }}>{item.profiles?.email || 'Sistema'}</p>
-                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(item.created_at).toLocaleDateString()}</p>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                                        {(() => {
+                                                            const fullName = item.profiles?.full_name || (
+                                                                item.type === 'personal'
+                                                                    ? `${item.data?.first_names || ''} ${item.data?.last_names || ''}`.trim()
+                                                                    : item.data?.company_legal_name
+                                                            );
+                                                            return fullName ? (
+                                                                <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>{fullName}</p>
+                                                            ) : null;
+                                                        })()}
                                                         {item.metadata?.creation_type === 'manual' && (
-                                                            <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>MANUAL</span>
+                                                            <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, width: 'fit-content' }}>MANUAL</span>
                                                         )}
                                                     </div>
                                                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -845,7 +871,8 @@ export const StaffPanel: React.FC = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                             <div>
                                 <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Usuario</h4>
-                                <p style={{ fontWeight: 600 }}>{selectedItem.profiles?.email}</p>
+                                <p style={{ fontWeight: 700, fontSize: '1.1rem' }}>{selectedItem.profiles?.full_name || 'Sin nombre registrado'}</p>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{selectedItem.profiles?.email}</p>
                             </div>
 
                             {activeTab === 'onboarding' && (
@@ -1106,7 +1133,7 @@ export const StaffPanel: React.FC = () => {
                                 <>
                                     <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                                            <h4 style={{ margin: 0 }}>Datos de la Órden</h4>
+                                            <h4 style={{ margin: 0 }}>Datos del Expediente</h4>
                                             <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                                 {selectedItem.metadata?.creation_type === 'manual' && (
                                                     <span style={{ fontSize: '10px', background: '#FEE2E2', color: '#991B1B', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>MANUAL</span>
@@ -1117,7 +1144,7 @@ export const StaffPanel: React.FC = () => {
 
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                                             <div className="input-group">
-                                                <label style={{ fontSize: '0.7rem' }}>Tipo de Orden</label>
+                                                <label style={{ fontSize: '0.7rem' }}>Tipo de Gestión</label>
                                                 <select
                                                     disabled={!isEditingMaterial || (['deposit_received', 'processing', 'completed'].includes(selectedItem.status) && userRole !== 'admin')}
                                                     value={formContent.order_type || selectedItem.order_type}
@@ -1207,7 +1234,7 @@ export const StaffPanel: React.FC = () => {
                                                 )}
                                                 {selectedItem.metadata.swift_details && (
                                                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS SWIFT</div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS DEL RIEL (SWIFT)</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>Banco:</span> {selectedItem.metadata.swift_details.bankName}</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>SWIFT:</span> {selectedItem.metadata.swift_details.swiftCode}</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>IBAN/Cuenta:</span> {selectedItem.metadata.swift_details.iban}</div>
@@ -1216,7 +1243,7 @@ export const StaffPanel: React.FC = () => {
                                                 )}
                                                 {selectedItem.metadata.ach_details && (
                                                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS ACH</div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS DEL RIEL (ACH)</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>Banco:</span> {selectedItem.metadata.ach_details.bankName}</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>Routing:</span> {selectedItem.metadata.ach_details.routingNumber}</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>Cuenta:</span> {selectedItem.metadata.ach_details.accountNumber}</div>
@@ -1224,7 +1251,7 @@ export const StaffPanel: React.FC = () => {
                                                 )}
                                                 {selectedItem.metadata.crypto_destination && (
                                                     <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DESTINO CRIPTO</div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS DEL RIEL (DIGITAL)</div>
                                                         <div style={{ wordBreak: 'break-all' }}><span style={{ color: 'var(--text-muted)' }}>Address:</span> {selectedItem.metadata.crypto_destination.address}</div>
                                                         <div><span style={{ color: 'var(--text-muted)' }}>Red:</span> {selectedItem.metadata.crypto_destination.network}</div>
                                                     </div>
@@ -1243,12 +1270,74 @@ export const StaffPanel: React.FC = () => {
 
                                         {selectedItem.evidence_url && (
                                             <div style={{ background: '#FFFBEB', padding: '1rem', borderRadius: '12px', border: '1px solid #FEF3C7' }}>
-                                                <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem', fontWeight: 700 }}>Comprobante de Depósito (Cliente):</p>
+                                                <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem', fontWeight: 700 }}>Comprobante de Movimiento en Riel (Cliente):</p>
                                                 <button onClick={() => window.open(selectedItem.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem', background: '#fff' }}>Ver Comprobante</button>
                                             </div>
                                         )}
 
-                                        {!selectedItem.support_document_url && !selectedItem.evidence_url && (
+                                        {/* Staff Shared Documents Section */}
+                                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                                            <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.75rem', textTransform: 'uppercase' }}>Documentos de Trazabilidad / Contratos (Staff):</p>
+
+                                            {selectedItem.metadata?.staff_documents?.map((doc: any, i: number) => (
+                                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', background: '#F8FAFC', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                    <span style={{ fontSize: '0.7rem', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</span>
+                                                    <button onClick={() => window.open(doc.url, '_blank')} style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', background: 'var(--primary)', color: '#fff', borderRadius: '4px' }}>Ver</button>
+                                                </div>
+                                            ))}
+
+                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        id="staff_doc_name"
+                                                        placeholder="Nombre del Doc (ej: Contrato)"
+                                                        style={{ fontSize: '0.75rem', padding: '0.5rem', width: '100%' }}
+                                                    />
+                                                    <input
+                                                        type="file"
+                                                        id="staff_doc_file"
+                                                        style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        const name = (document.getElementById('staff_doc_name') as HTMLInputElement).value;
+                                                        const file = (document.getElementById('staff_doc_file') as HTMLInputElement).files?.[0];
+                                                        if (!name || !file) return alert('Nombre y archivo obligatorios');
+
+                                                        try {
+                                                            const fileExt = file.name.split('.').pop();
+                                                            const filePath = `staff_docs/${selectedItem.id}/${Date.now()}.${fileExt}`;
+                                                            const { error: uploadError } = await supabase.storage.from('order-evidences').upload(filePath, file);
+                                                            if (uploadError) throw uploadError;
+                                                            const { data: { publicUrl } } = supabase.storage.from('order-evidences').getPublicUrl(filePath);
+
+                                                            const currentDocs = selectedItem.metadata?.staff_documents || [];
+                                                            const newMetadata = {
+                                                                ...selectedItem.metadata,
+                                                                staff_documents: [...currentDocs, { name, url: publicUrl, date: new Date().toISOString() }]
+                                                            };
+
+                                                            await supabase.from('payment_orders').update({ metadata: newMetadata }).eq('id', selectedItem.id);
+                                                            alert('Documento compartido con el cliente');
+                                                            fetchData();
+                                                            setSelectedItem({ ...selectedItem, metadata: newMetadata });
+                                                            (document.getElementById('staff_doc_name') as HTMLInputElement).value = '';
+                                                            (document.getElementById('staff_doc_file') as HTMLInputElement).value = '';
+                                                        } catch (err: any) {
+                                                            alert('Error: ' + err.message);
+                                                        }
+                                                    }}
+                                                    className="btn-primary"
+                                                    style={{ fontSize: '0.75rem', padding: '0.5rem' }}
+                                                >
+                                                    Compartir
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {!selectedItem.support_document_url && !selectedItem.evidence_url && (!selectedItem.metadata?.staff_documents || selectedItem.metadata.staff_documents.length === 0) && (
                                             <div style={{ padding: '1rem', textAlign: 'center', opacity: 0.5, fontSize: '0.8rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
                                                 No hay documentos adjuntos
                                             </div>
@@ -1270,7 +1359,7 @@ export const StaffPanel: React.FC = () => {
                                         )}
 
                                         {selectedItem.status === 'created' || selectedItem.status === 'waiting_deposit' ? (
-                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'deposit_received')} className="btn-primary" style={{ width: '100%' }}>Confirmar Depósito</button>
+                                            <button onClick={() => handleUpdateStatus(selectedItem.id, 'payment_orders', 'deposit_received')} className="btn-primary" style={{ width: '100%' }}>Validar Acreditación</button>
                                         ) : selectedItem.status === 'deposit_received' ? (
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -1340,12 +1429,12 @@ export const StaffPanel: React.FC = () => {
                                                     className="btn-primary"
                                                     style={{ background: 'var(--success)' }}
                                                 >
-                                                    Completar Orden
+                                                    Cerrar Expediente
                                                 </button>
                                             </div>
                                         ) : (
                                             <div style={{ textAlign: 'center', color: 'var(--success)', fontWeight: 700 }}>
-                                                ORDEN FINALIZADA
+                                                EXPEDIENTE CERRADO
                                                 <button
                                                     onClick={() => generatePaymentPDF({
                                                         id: selectedItem.id,

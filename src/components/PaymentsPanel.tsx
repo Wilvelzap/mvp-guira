@@ -408,6 +408,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         >
                                             <option value="">-- Seleccionar País --</option>
                                             <option value="Estados Unidos">Estados Unidos</option>
+                                            <option value="China">China</option>
+                                            <option value="Hong Kong">Hong Kong</option>
                                             <option value="España">España</option>
                                             <option value="Bolivia">Bolivia</option>
                                             <option value="Reino Unido">Reino Unido</option>
@@ -623,9 +625,9 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
                                 >
                                     <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>💼</div>
-                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde Billetera</h4>
+                                    <h4 style={{ margin: 0, fontWeight: 700 }}>Desde Riel Digital</h4>
                                     <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-                                        Usa tu saldo USDC para pagar al exterior.
+                                        Usa tu volumen en USDC para documentar salida al exterior.
                                     </p>
                                 </div>
                             </div>
@@ -637,10 +639,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                             <h4 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>
-                                {selectedRoute === 'bolivia_to_exterior' && 'Pagar al exterior'}
-                                {selectedRoute === 'us_to_wallet' && 'Recibir desde EE.UU.'}
-                                {selectedRoute === 'crypto_to_crypto' && 'Enviar cripto'}
-                                {selectedRoute === 'us_to_bolivia' && 'Recibir en Bolivia'}
+                                {selectedRoute === 'bolivia_to_exterior' && 'Nueva Gestión al exterior'}
+                                {selectedRoute === 'us_to_wallet' && 'Documentar recepción desde EE.UU.'}
+                                {selectedRoute === 'crypto_to_crypto' && 'Documentar envío digital'}
+                                {selectedRoute === 'us_to_bolivia' && 'Declarar recepción en Bolivia'}
                             </h4>
                             <button
                                 onClick={() => {
@@ -665,7 +667,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     {/* Rail Selection & Disclaimer */}
                                     <div className="input-group" style={{ marginBottom: '0.5rem' }}>
                                         <div style={{ background: '#EFF6FF', padding: '1rem', borderRadius: '12px', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                                            💡 <b>Aviso:</b> {selectedRoute === 'bolivia_to_exterior' ? 'Este pago se procesa a través de un operador local autorizado (Riel PSAV).' : 'Guira coordina y documenta esta operación.'}
+                                            💡 <b>Aviso:</b> {selectedRoute === 'bolivia_to_exterior' ? 'Esta gestión se procesa a través de un operador local autorizado (Riel PSAV).' : 'Guira coordina y documenta esta operación.'}
                                         </div>
                                     </div>
 
@@ -681,7 +683,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                     </button>
                                                     <button onClick={() => setFundingMethod('crypto')} style={{ padding: '1.25rem', borderRadius: '12px', border: `2px solid ${fundingMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`, background: fundingMethod === 'crypto' ? '#EFF6FF' : '#fff', cursor: 'pointer' }}>
                                                         <div style={{ fontWeight: 700 }}>USDT / USDC</div>
-                                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Red Digital</div>
+                                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>Riel Digital</div>
                                                     </button>
                                                 </div>
                                             </div>
@@ -691,7 +693,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                                     <button onClick={() => setDeliveryMethod('swift')} className={`btn-secondary ${deliveryMethod === 'swift' ? 'active' : ''}`} style={{ border: `2px solid ${deliveryMethod === 'swift' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff', justifyContent: 'flex-start' }}>🌐 SWIFT / Local (Mundo)</button>
                                                     <button onClick={() => setDeliveryMethod('ach')} className={`btn-secondary ${deliveryMethod === 'ach' ? 'active' : ''}`} style={{ border: `2px solid ${deliveryMethod === 'ach' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff', justifyContent: 'flex-start' }}>🇺🇸 ACH (EE.UU.)</button>
-                                                    <button onClick={() => setDeliveryMethod('crypto')} className={`btn-secondary ${deliveryMethod === 'crypto' ? 'active' : ''}`} style={{ border: `2px solid ${deliveryMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff', justifyContent: 'flex-start' }}>⚡ Cripto (USDT/USDC)</button>
+                                                    <button onClick={() => setDeliveryMethod('crypto')} className={`btn-secondary ${deliveryMethod === 'crypto' ? 'active' : ''}`} style={{ border: `2px solid ${deliveryMethod === 'crypto' ? 'var(--primary)' : 'var(--border)'}`, background: '#fff', justifyContent: 'flex-start' }}>⚡ Riel Digital (USDT/USDC)</button>
                                                 </div>
                                             </div>
 
@@ -773,7 +775,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                             )}
 
                                             <div className="input-group">
-                                                <label style={{ fontWeight: 700 }}>Motivo del pago</label>
+                                                <label style={{ fontWeight: 700 }}>Motivo de la operación (Justificación)</label>
                                                 <input value={paymentReason} onChange={e => setPaymentReason(e.target.value)} placeholder="Ej: Factura #123" />
                                             </div>
 
@@ -808,7 +810,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                             </div>
                                             {selectedRoute === 'us_to_wallet' && (
                                                 <div className="input-group">
-                                                    <label style={{ fontWeight: 700 }}>Billetera de Recepción</label>
+                                                    <label style={{ fontWeight: 700 }}>Riel de Recepción</label>
                                                     <input value={clientCryptoAddress} onChange={e => setClientCryptoAddress(e.target.value)} />
                                                 </div>
                                             )}
@@ -847,7 +849,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         className="btn-primary"
                                         style={{ marginTop: '1rem' }}
                                     >
-                                        {(selectedRoute !== 'bolivia_to_exterior' && !amount) ? 'Solicitar Instrucciones' : 'Continuar a Revisión'}
+                                        {(selectedRoute !== 'bolivia_to_exterior' && !amount) ? 'Solicitar Datos de Riel' : 'Continuar a Revisión de Expediente'}
                                     </button>
                                 </div>
                             )}
@@ -872,7 +874,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '1rem' }}>
-                                        <button onClick={handleExecuteOperation} disabled={loading} className="btn-primary" style={{ flex: 2 }}>{loading ? 'Creando...' : 'Confirmar e Iniciar'}</button>
+                                        <button onClick={handleExecuteOperation} disabled={loading} className="btn-primary" style={{ flex: 2 }}>{loading ? 'Registrando...' : 'Confirmar e Iniciar Expediente'}</button>
                                         <button onClick={() => setStep(2)} className="btn-secondary" style={{ flex: 1 }}>Corregir</button>
                                     </div>
                                 </div>
@@ -883,12 +885,12 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
                                         <ShieldCheck size={48} />
                                     </div>
-                                    <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>¡Orden Creada!</h2>
-                                    <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Tu solicitud ha sido registrada. Sigue las instrucciones para completar el pago.</p>
+                                    <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>¡Expediente Iniciado!</h2>
+                                    <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Tu solicitud ha sido registrada en el sistema. Sigue las indicaciones del riel para completar la operación.</p>
 
                                     {waitingForEvidence ? (
                                         <div style={{ textAlign: 'left', background: '#FFFBEB', padding: '1.5rem', borderRadius: '16px', border: '1px solid #FEF3C7' }}>
-                                            <h4 style={{ color: '#92400E' }}>Instrucciones de Depósito</h4>
+                                            <h4 style={{ color: '#92400E' }}>Datos del Riel Financiero (Tercero)</h4>
                                             <div style={{ margin: '1rem 0', fontSize: '0.9rem' }}>
                                                 {fundingMethod === 'bs' ? (
                                                     <div><b>Banco:</b> Mercantil Santa Cruz<br /><b>Cuenta:</b> 401-2345678-9<br /><b>Monto:</b> {amountBs} Bs</div>
@@ -903,7 +905,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                     <div style={{ fontSize: '0.75rem' }}>{evidenceFile ? evidenceFile.name : 'Subir Comprobante (PDF/JPG)'}</div>
                                                     <input id="final_up" type="file" style={{ display: 'none' }} onChange={e => setEvidenceFile(e.target.files?.[0] || null)} />
                                                 </div>
-                                                <button onClick={handleUploadEvidence} disabled={!evidenceFile || loading} className="btn-primary" style={{ width: '100%', marginTop: '1rem', background: '#D97706' }}>Notificar Pago</button>
+                                                <button onClick={handleUploadEvidence} disabled={!evidenceFile || loading} className="btn-primary" style={{ width: '100%', marginTop: '1rem', background: '#D97706' }}>Notificar Acreditación</button>
                                             </div>
                                         </div>
                                     ) : (
@@ -922,7 +924,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                         {activeTab === 'payin' ? (
                             <motion.div key="list_payin" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Mis Instrucciones de Depósito</h3>
+                                <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Mis Rieles de Acreditación</h3>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
                                     {payinRoutes.length === 0 ? (
                                         <div className="premium-card" style={{ gridColumn: '1/-1', textAlign: 'center', padding: '4rem', opacity: 0.5 }}>

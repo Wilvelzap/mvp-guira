@@ -18,6 +18,7 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
     const [balance, setBalance] = useState(0)
     const [transactions, setTransactions] = useState<any[]>([])
     const [pendingTransfers, setPendingTransfers] = useState<any[]>([])
+    const [activeExpedientes, setActiveExpedientes] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState<'all' | 'deposit' | 'payout'>('all')
 
@@ -66,6 +67,16 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
                 .eq('user_id', user.id)
 
             setPendingTransfers(pending || [])
+
+            const { data: expedientes } = await supabase
+                .from('payment_orders')
+                .select('*')
+                .eq('user_id', user.id)
+                .neq('status', 'completed')
+                .neq('status', 'failed')
+                .order('created_at', { ascending: false })
+
+            setActiveExpedientes(expedientes || [])
         } catch (err) {
             console.error('Error fetching dashboard data:', err)
         } finally {
@@ -88,14 +99,14 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0 }}>Mi Billetera</h1>
+                <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0 }}>Gestión de Operaciones</h1>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                     <button
-                        onClick={() => onNavigate('payments', 'bolivia_to_exterior')}
+                        onClick={() => onNavigate('management', 'bolivia_to_exterior')}
                         className="btn-secondary"
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', border: '1px solid var(--border)' }}
                     >
-                        <ArrowUpRight size={18} /> Pagar al Exterior
+                        <ArrowUpRight size={18} /> Nueva Operación Exterior
                     </button>
                     <button
                         onClick={() => onNavigate('payments', 'bank_to_crypto')}
@@ -119,12 +130,12 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
                 <div style={{ position: 'relative', zIndex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', opacity: 0.8 }}>
                         <Wallet size={20} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tu saldo disponible</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Volumen en Riel Externo (Documentado)</span>
                     </div>
                     <div style={{ fontSize: 'clamp(2rem, 8vw, 3.5rem)', fontWeight: 800, marginBottom: '0.5rem' }}>
                         ${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </div>
-                    <p style={{ opacity: 0.6, fontSize: '0.8rem', marginTop: '1rem', margin: 0 }}>Sujeto a confirmación de red</p>
+                    <p style={{ opacity: 0.6, fontSize: '0.8rem', marginTop: '1rem', margin: 0 }}>Sujeto a validación de rieles terceros</p>
                 </div>
                 <Wallet
                     size={240}
@@ -138,12 +149,54 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
                 />
             </div>
 
+            {/* Active Expedientes */}
+            {activeExpedientes.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Expedientes en Curso / Documentación</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                        {activeExpedientes.map((exp) => (
+                            <div key={exp.id} className="premium-card" style={{ padding: '1.5rem', border: '1px solid var(--border)', background: '#fff' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                    <div>
+                                        <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>ID: {exp.id.slice(0, 8)}</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(exp.created_at).toLocaleDateString()}</div>
+                                    </div>
+                                    <span style={{ fontSize: '0.65rem', padding: '0.25rem 0.5rem', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase' }}>
+                                        {exp.status.replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Monto: <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>${Number(exp.amount_origin).toLocaleString()} {exp.origin_currency}</span></div>
+                                </div>
+                                {exp.metadata?.staff_documents?.length > 0 && (
+                                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Documentos del Staff:</p>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            {exp.metadata.staff_documents.map((doc: any, i: number) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => window.open(doc.url, '_blank')}
+                                                    className="btn-secondary"
+                                                    style={{ width: '100%', fontSize: '0.7rem', padding: '0.4rem', justifyContent: 'flex-start', textAlign: 'left' }}
+                                                >
+                                                    📄 {doc.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Transactions */}
             <div className="premium-card" style={{ padding: '2rem 1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <History size={22} color="var(--primary)" />
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Historial de Transacciones</h2>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Trazabilidad de Expedientes</h2>
                     </div>
 
                     <div style={{ background: '#F1F5F9', padding: '4px', borderRadius: '10px', display: 'flex', gap: '4px' }}>
@@ -163,7 +216,7 @@ export const WalletDashboard = ({ onNavigate }: WalletDashboardProps) => {
                                     boxShadow: filter === f ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
                                 }}
                             >
-                                {f === 'all' ? 'Todas' : (f === 'deposit' ? 'Depósitos' : 'Pagos')}
+                                {f === 'all' ? 'Todos' : (f === 'deposit' ? 'Entradas' : 'Salidas')}
                             </button>
                         ))}
                     </div>
