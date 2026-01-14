@@ -234,7 +234,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
             // 4. Upload Supporting Document (Factura/Proforma) if present
             if (supportDocument) {
-                await uploadOrderEvidence(order.id, supportDocument, 'evidence_url')
+                await uploadOrderEvidence(order.id, supportDocument, 'support_document_url')
             }
 
             // 5. Post-Creation Logic

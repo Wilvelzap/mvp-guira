@@ -20,6 +20,7 @@ export interface PaymentOrder {
     supplier_id: string | null
     metadata: any
     evidence_url: string | null
+    support_document_url: string | null
     staff_comprobante_url: string | null
     created_at: string
     updated_at: string
@@ -86,7 +87,7 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus, me
     return { data, error }
 }
 
-export async function uploadOrderEvidence(orderId: string, file: File, column: 'evidence_url' | 'staff_comprobante_url') {
+export async function uploadOrderEvidence(orderId: string, file: File, column: 'evidence_url' | 'staff_comprobante_url' | 'support_document_url') {
     const fileExt = (file.name || '').split('.').pop()
     const fileName = `${orderId}/${column}_${Math.random()}.${fileExt}`
     const filePath = `evidences/${fileName}`

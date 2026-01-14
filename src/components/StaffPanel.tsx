@@ -1190,22 +1190,70 @@ export const StaffPanel: React.FC = () => {
                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rail:</span>
                                             <span style={{ textTransform: 'uppercase', fontWeight: 600 }}>{selectedItem.processing_rail ? String(selectedItem.processing_rail).replace(/_/g, ' ') : ''}</span>
                                         </div>
-                                        {selectedItem.metadata?.payment_reason && (
-                                            <div style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '0.5rem' }}>
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Motivo:</span>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{selectedItem.metadata.payment_reason}</span>
+                                    </div>
+
+                                    {selectedItem.metadata && (
+                                        <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                                            <h4 style={{ fontSize: '0.8rem', marginBottom: '0.75rem', color: 'var(--primary)', textTransform: 'uppercase' }}>Detalles de Metadata</h4>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                                {selectedItem.metadata.payment_reason && (
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Motivo:</span> <b>{selectedItem.metadata.payment_reason}</b></div>
+                                                )}
+                                                {selectedItem.metadata.funding_method && (
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Método de Fondeo:</span> <b>{selectedItem.metadata.funding_method}</b></div>
+                                                )}
+                                                {selectedItem.metadata.delivery_method && (
+                                                    <div><span style={{ color: 'var(--text-muted)' }}>Método de Envío:</span> <b>{selectedItem.metadata.delivery_method}</b></div>
+                                                )}
+                                                {selectedItem.metadata.swift_details && (
+                                                    <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS SWIFT</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>Banco:</span> {selectedItem.metadata.swift_details.bankName}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>SWIFT:</span> {selectedItem.metadata.swift_details.swiftCode}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>IBAN/Cuenta:</span> {selectedItem.metadata.swift_details.iban}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>País:</span> {selectedItem.metadata.swift_details.country}</div>
+                                                    </div>
+                                                )}
+                                                {selectedItem.metadata.ach_details && (
+                                                    <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DATOS ACH</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>Banco:</span> {selectedItem.metadata.ach_details.bankName}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>Routing:</span> {selectedItem.metadata.ach_details.routingNumber}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>Cuenta:</span> {selectedItem.metadata.ach_details.accountNumber}</div>
+                                                    </div>
+                                                )}
+                                                {selectedItem.metadata.crypto_destination && (
+                                                    <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.75rem', marginBottom: '0.25rem' }}>DESTINO CRIPTO</div>
+                                                        <div style={{ wordBreak: 'break-all' }}><span style={{ color: 'var(--text-muted)' }}>Address:</span> {selectedItem.metadata.crypto_destination.address}</div>
+                                                        <div><span style={{ color: 'var(--text-muted)' }}>Red:</span> {selectedItem.metadata.crypto_destination.network}</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {selectedItem.support_document_url && (
+                                            <div style={{ background: '#F0F9FF', padding: '1rem', borderRadius: '12px', border: '1px solid #BAE6FD' }}>
+                                                <p style={{ fontSize: '0.75rem', color: '#0369A1', marginBottom: '0.5rem', fontWeight: 700 }}>Factura / Proforma (Respaldo):</p>
+                                                <button onClick={() => window.open(selectedItem.support_document_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem', background: '#fff' }}>Ver Factura</button>
+                                            </div>
+                                        )}
+
+                                        {selectedItem.evidence_url && (
+                                            <div style={{ background: '#FFFBEB', padding: '1rem', borderRadius: '12px', border: '1px solid #FEF3C7' }}>
+                                                <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem', fontWeight: 700 }}>Comprobante de Depósito (Cliente):</p>
+                                                <button onClick={() => window.open(selectedItem.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem', background: '#fff' }}>Ver Comprobante</button>
+                                            </div>
+                                        )}
+
+                                        {!selectedItem.support_document_url && !selectedItem.evidence_url && (
+                                            <div style={{ padding: '1rem', textAlign: 'center', opacity: 0.5, fontSize: '0.8rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
+                                                No hay documentos adjuntos
                                             </div>
                                         )}
                                     </div>
-
-                                    {selectedItem.evidence_url && (
-                                        <div style={{ background: '#FFFBEB', padding: '1rem', borderRadius: '12px', border: '1px solid #FEF3C7' }}>
-                                            <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem' }}>
-                                                {selectedItem.order_type === 'BO_TO_WORLD' ? 'Factura / Proforma Adjunta:' : 'Comprobante de Depósito / QR:'}
-                                            </p>
-                                            <button onClick={() => window.open(selectedItem.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem' }}>Ver Documento</button>
-                                        </div>
-                                    )}
 
                                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
                                         {userRole === 'admin' && (
@@ -1336,52 +1384,54 @@ export const StaffPanel: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            {showReasonModal && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ background: '#fff', padding: '2rem', borderRadius: '16px', maxWidth: '450px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', color: 'var(--primary)' }}>
-                            <AlertTriangle size={24} />
-                            <h3 style={{ margin: 0 }}>Motivo de la Modificación</h3>
-                        </div>
-                        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-                            De acuerdo a las políticas de Guira, toda modificación manual debe ser debidamente justificada para fines de auditoría.
-                        </p>
-                        <textarea
-                            placeholder="Describa el motivo del cambio (mín. 5 caracteres)..."
-                            value={modificationReason}
-                            onChange={(e) => setModificationReason(e.target.value)}
-                            style={{ width: '100%', minHeight: '100px', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '1.5rem', fontSize: '1rem' }}
-                        />
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                            <button
-                                onClick={() => {
-                                    setShowReasonModal(false)
-                                    setModificationReason('')
-                                    setPendingAction(null)
-                                }}
-                                className="btn-secondary"
-                                style={{ flex: 1 }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (pendingAction.type === 'status') {
-                                        handleUpdateStatus(pendingAction.id, pendingAction.table, pendingAction.status, pendingAction.additionalData, modificationReason)
-                                    } else {
-                                        handleSaveManual()
-                                    }
-                                }}
-                                disabled={modificationReason.trim().length < 5}
-                                className="btn-primary"
-                                style={{ flex: 1 }}
-                            >
-                                Confirmar Cambio
-                            </button>
-                        </div>
-                    </motion.div>
-                </div>
-            )}
-        </div>
+            {
+                showReasonModal && (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ background: '#fff', padding: '2rem', borderRadius: '16px', maxWidth: '450px', width: '100%', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', color: 'var(--primary)' }}>
+                                <AlertTriangle size={24} />
+                                <h3 style={{ margin: 0 }}>Motivo de la Modificación</h3>
+                            </div>
+                            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                                De acuerdo a las políticas de Guira, toda modificación manual debe ser debidamente justificada para fines de auditoría.
+                            </p>
+                            <textarea
+                                placeholder="Describa el motivo del cambio (mín. 5 caracteres)..."
+                                value={modificationReason}
+                                onChange={(e) => setModificationReason(e.target.value)}
+                                style={{ width: '100%', minHeight: '100px', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '1.5rem', fontSize: '1rem' }}
+                            />
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowReasonModal(false)
+                                        setModificationReason('')
+                                        setPendingAction(null)
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ flex: 1 }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (pendingAction.type === 'status') {
+                                            handleUpdateStatus(pendingAction.id, pendingAction.table, pendingAction.status, pendingAction.additionalData, modificationReason)
+                                        } else {
+                                            handleSaveManual()
+                                        }
+                                    }}
+                                    disabled={modificationReason.trim().length < 5}
+                                    className="btn-primary"
+                                    style={{ flex: 1 }}
+                                >
+                                    Confirmar Cambio
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )
+            }
+        </div >
     )
 }
