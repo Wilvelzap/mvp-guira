@@ -26,7 +26,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
     const [isManagingSuppliers, setIsManagingSuppliers] = useState(false)
     const [isCreatingSupplier, setIsCreatingSupplier] = useState(false)
-    const [newSupplier, setNewSupplier] = useState({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '' })
+    const [newSupplier, setNewSupplier] = useState({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '', address: '' })
     const [operationType, setOperationType] = useState<null | 'receive' | 'send'>(null)
 
     // Core Transaction Data
@@ -44,6 +44,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
     // Bolivia Specific
     const [amountBs, setAmountBs] = useState('')
     const [exchangeRateBs, setExchangeRateBs] = useState(10.5)
+    const [qrUrl, setQrUrl] = useState<string | null>(null)
+    const [calcCurrency, setCalcCurrency] = useState<'bs' | 'usdt'>('usdt')
     const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
 
     // Step-by-Step "Pagar al exterior" and "Recibir en Bolivia" states
@@ -118,6 +120,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 fee_amount: o.fee_total,
                 net_amount: o.amount_converted,
                 exchange_rate: o.exchange_rate_applied,
+                support_document_url: o.support_document_url,
+                evidence_url: o.evidence_url,
                 is_payment_order: true
             }))
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -128,6 +132,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
         const rateSetting = settings.data?.find(s => s.key === 'bolivia_exchange_rate');
         if (rateSetting) setExchangeRateBs(Number(rateSetting.value));
+        const qrSetting = settings.data?.find(s => s.key === 'bolivia_reception_qr_url');
+        if (qrSetting) setQrUrl(qrSetting.value);
 
         setLoading(false)
     }
@@ -145,6 +151,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
         setEvidenceFile(null)
         setIsManagingSuppliers(false)
         setIsCreatingSupplier(false)
+        setNewSupplier({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '', address: '' })
         // Reset new fields
         setFundingMethod('bs')
         setDeliveryMethod('swift')
@@ -252,7 +259,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 setStep(4)
                 // Auto-complete or advance other automated flows
                 await supabase.from('payment_orders').update({ status: 'completed' }).eq('id', order.id)
-                if (selectedRoute === 'crypto_to_crypto') resetFlow()
+                // Removed immediate resetFlow to show Step 4 Success.
             }
 
             fetchPaymentsData()
@@ -338,15 +345,15 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
                     <div style={{ background: '#E2E8F0', padding: '4px', borderRadius: '12px', display: 'flex', gap: '4px' }}>
                         <button
-                            onClick={() => setActiveTab('payin')}
+                            onClick={() => { setActiveTab('payin'); setIsManagingSuppliers(false); setSelectedRoute(null); }}
                             style={{
                                 padding: '0.5rem 1.25rem',
                                 borderRadius: '8px',
                                 fontSize: '0.875rem',
                                 fontWeight: 600,
-                                background: activeTab === 'payin' ? '#fff' : 'transparent',
-                                boxShadow: activeTab === 'payin' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                                color: activeTab === 'payin' ? 'var(--secondary)' : 'var(--text-muted)'
+                                background: activeTab === 'payin' && !isManagingSuppliers ? '#fff' : 'transparent',
+                                boxShadow: activeTab === 'payin' && !isManagingSuppliers ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                color: activeTab === 'payin' && !isManagingSuppliers ? 'var(--secondary)' : 'var(--text-muted)'
                             }}
                         >
                             Mis Instrucciones
@@ -366,7 +373,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                             Proveedores
                         </button>
                         <button
-                            onClick={() => { resetFlow(); setActiveTab('payout'); }}
+                            onClick={() => { resetFlow(); setActiveTab('payout'); setIsManagingSuppliers(false); }}
                             style={{
                                 padding: '0.5rem 1.25rem',
                                 borderRadius: '8px',
@@ -387,7 +394,15 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                 {isManagingSuppliers ? (
                     <motion.div key="suppliers" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="premium-card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ margin: 0, fontWeight: 700 }}>Agenda de Proveedores</h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <button
+                                    onClick={() => setIsManagingSuppliers(false)}
+                                    style={{ background: '#F1F5F9', border: 'none', padding: '0.4rem', borderRadius: '8px', cursor: 'pointer' }}
+                                >
+                                    <ChevronLeft size={20} />
+                                </button>
+                                <h3 style={{ margin: 0, fontWeight: 700 }}>Agenda de Proveedores</h3>
+                            </div>
                             <button onClick={() => setIsCreatingSupplier(true)} className="btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}>+ Nuevo Proveedor</button>
                         </div>
 
@@ -437,6 +452,10 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         <label>Dirección Cripto (opcional)</label>
                                         <input value={newSupplier.crypto_address} onChange={e => setNewSupplier({ ...newSupplier, crypto_address: e.target.value })} />
                                     </div>
+                                    <div className="input-group" style={{ gridColumn: '1 / -1' }}>
+                                        <label>Dirección Física del Proveedor (OBLIGATORIA para SWIFT)</label>
+                                        <input value={newSupplier.address} onChange={e => setNewSupplier({ ...newSupplier, address: e.target.value })} placeholder="Calle, Ciudad, Estado, Código Postal" />
+                                    </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
                                     <button
@@ -447,6 +466,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                 user_id: user.id,
                                                 name: newSupplier.name,
                                                 country: newSupplier.bank_country,
+                                                payment_method: newSupplier.crypto_address ? 'crypto' : 'bank',
                                                 bank_details: {
                                                     bank_name: newSupplier.bank_name,
                                                     swift_code: newSupplier.swift_code,
@@ -455,13 +475,14 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                 },
                                                 crypto_details: {
                                                     address: newSupplier.crypto_address
-                                                }
+                                                },
+                                                address: newSupplier.address
                                             };
                                             const { error } = await supabase.from('suppliers').insert([payload]);
                                             if (error) alert(error.message);
                                             else {
                                                 setIsCreatingSupplier(false);
-                                                setNewSupplier({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '' });
+                                                setNewSupplier({ name: '', bank_name: '', swift_code: '', account_number: '', crypto_address: '', bank_country: '', address: '' });
                                                 fetchPaymentsData();
                                             }
                                             setLoading(false);
@@ -482,7 +503,8 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>{s.name}</div>
                                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                         {s.bank_details?.bank_name} • {s.country}<br />
-                                        {s.bank_details?.account_number || s.crypto_details?.address}
+                                        {s.bank_details?.account_number || s.crypto_details?.address}<br />
+                                        {s.address && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{s.address}</span>}
                                     </div>
                                 </div>
                             ))}
@@ -566,7 +588,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                 gap: '1rem'
                             }}>
                                 <div
-                                    onClick={() => { setSelectedRoute('us_to_wallet'); setStep(2); }}
+                                    onClick={() => { setSelectedRoute('us_to_wallet'); setFundingMethod('ach'); setStep(2); }}
                                     className="premium-card clickable-card"
                                     style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
                                 >
@@ -578,7 +600,7 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                 </div>
 
                                 <div
-                                    onClick={() => { setSelectedRoute('crypto_to_crypto'); setStep(2); }}
+                                    onClick={() => { setSelectedRoute('crypto_to_crypto'); setFundingMethod('crypto'); setStep(2); }}
                                     className="premium-card clickable-card"
                                     style={{ cursor: 'pointer', padding: '1.5rem', textAlign: 'center', background: '#fff', border: '1px solid #E2E8F0' }}
                                 >
@@ -671,6 +693,94 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                         </div>
                                     </div>
 
+                                    {/* Dual-Currency Calculator - Moved here to be always visible in step 2 */}
+                                    {selectedRoute === 'bolivia_to_exterior' && (
+                                        <div style={{ background: '#F8FAFC', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--border)', marginBottom: '1rem' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                                <label style={{ fontWeight: 700, margin: 0 }}>Monto del Pago</label>
+                                                <div style={{ display: 'flex', background: '#E2E8F0', borderRadius: '8px', padding: '2px' }}>
+                                                    <button
+                                                        onClick={() => setCalcCurrency('usdt')}
+                                                        style={{
+                                                            padding: '4px 12px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 700,
+                                                            background: calcCurrency === 'usdt' ? '#fff' : 'transparent',
+                                                            color: calcCurrency === 'usdt' ? 'var(--primary)' : 'var(--text-muted)',
+                                                            border: 'none',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        USDT
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCalcCurrency('bs')}
+                                                        style={{
+                                                            padding: '4px 12px',
+                                                            borderRadius: '6px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 700,
+                                                            background: calcCurrency === 'bs' ? '#fff' : 'transparent',
+                                                            color: calcCurrency === 'bs' ? 'var(--primary)' : 'var(--text-muted)',
+                                                            border: 'none',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        BS
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {calcCurrency === 'usdt' ? (
+                                                <div className="input-group">
+                                                    <div style={{ position: 'relative' }}>
+                                                        <input
+                                                            type="number"
+                                                            placeholder="Monto en USDT"
+                                                            value={amount}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setAmount(val);
+                                                                setAmountBs(val ? (Number(val) * exchangeRateBs).toFixed(2) : '');
+                                                            }}
+                                                            style={{ fontSize: '1.25rem', fontWeight: 700, paddingRight: '4rem' }}
+                                                        />
+                                                        <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-muted)' }}>USDT</span>
+                                                    </div>
+                                                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                        ≈ {amountBs || '0.00'} Bs
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="input-group">
+                                                    <div style={{ position: 'relative' }}>
+                                                        <input
+                                                            type="number"
+                                                            placeholder="Monto en Bolivianos"
+                                                            value={amountBs}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setAmountBs(val);
+                                                                setAmount(val ? (Number(val) / exchangeRateBs).toFixed(2) : '');
+                                                            }}
+                                                            style={{ fontSize: '1.25rem', fontWeight: 700, paddingRight: '3rem' }}
+                                                        />
+                                                        <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-muted)' }}>BS</span>
+                                                    </div>
+                                                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                        ≈ {amount || '0.00'} USDT
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#F1F5F9', padding: '0.5rem 0.75rem', borderRadius: '8px' }}>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>Tasa Guira:</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>1 USDT = {exchangeRateBs} Bs</span>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* BOLIVIA TO EXTERIOR */}
                                     {selectedRoute === 'bolivia_to_exterior' && (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -697,24 +807,16 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                 </div>
                                             </div>
 
-                                            {fundingMethod === 'bs' ? (
-                                                <div style={{ background: '#F0FDFA', padding: '1.25rem', border: '1px solid #CCFBF1', borderRadius: '12px' }}>
-                                                    <label style={{ fontWeight: 700, color: '#0F766E' }}>Monto en Bolivianos</label>
-                                                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '0.5rem' }}>
-                                                        <input type="number" value={amountBs} onChange={e => { setAmountBs(e.target.value); setAmount((Number(e.target.value) / exchangeRateBs).toFixed(2)); }} style={{ flex: 1, fontSize: '1.1rem', fontWeight: 700 }} />
-                                                        <span>≈</span>
-                                                        <div style={{ fontWeight: 700, fontSize: '1.2rem' }}>{amount || '0.00'} USDT</div>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="input-group">
-                                                    <label style={{ fontWeight: 700 }}>Monto USDT/USDC</label>
-                                                    <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-                                                </div>
-                                            )}
-
                                             <div className="input-group">
-                                                <label style={{ fontWeight: 700 }}>Proveedor / Beneficiario</label>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                                    <label style={{ fontWeight: 700, margin: 0 }}>Proveedor / Beneficiario</label>
+                                                    <button
+                                                        onClick={() => { resetFlow(); setIsManagingSuppliers(true); setIsCreatingSupplier(true); }}
+                                                        style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
+                                                    >
+                                                        + Agregar Nuevo
+                                                    </button>
+                                                </div>
                                                 <select
                                                     value={selectedSupplier?.id || ''}
                                                     onChange={e => {
@@ -744,10 +846,12 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             }
                                                         }
                                                     }}
-                                                    style={{ width: '100%', padding: '0.75rem' }}
+                                                    style={{ width: '100%', padding: '0.875rem', borderRadius: '12px', border: '1px solid var(--border)', fontSize: '1rem' }}
                                                 >
-                                                    <option value="">-- Seleccionar --</option>
-                                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    <option value="">-- Seleccionar Proveedor --</option>
+                                                    {suppliers.map(s => (
+                                                        <option key={s.id} value={s.id}>{s.name} ({s.country})</option>
+                                                    ))}
                                                 </select>
                                             </div>
 
@@ -806,26 +910,40 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Completa los datos necesarios para procesar tu {translateType(selectedRoute).toLowerCase()}.</p>
                                             <div className="input-group">
                                                 <label style={{ fontWeight: 700 }}>Monto</label>
-                                                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+                                                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
                                             </div>
                                             {selectedRoute === 'us_to_wallet' && (
                                                 <div className="input-group">
-                                                    <label style={{ fontWeight: 700 }}>Riel de Recepción</label>
-                                                    <input value={clientCryptoAddress} onChange={e => setClientCryptoAddress(e.target.value)} />
+                                                    <label style={{ fontWeight: 700 }}>Riel de Recepción (Destino USDT/USDC)</label>
+                                                    <input value={clientCryptoAddress} onChange={e => setClientCryptoAddress(e.target.value)} placeholder="Dirección de tu billetera" />
                                                 </div>
                                             )}
                                             {selectedRoute === 'crypto_to_crypto' && (
                                                 <div className="input-group">
                                                     <label style={{ fontWeight: 700 }}>Dirección Destino</label>
-                                                    <input value={destinationId} onChange={e => setDestinationId(e.target.value)} />
+                                                    <input value={destinationId} onChange={e => setDestinationId(e.target.value)} placeholder="0x..." />
                                                 </div>
                                             )}
                                             {selectedRoute === 'us_to_bolivia' && (
                                                 <div className="input-group">
-                                                    <label style={{ fontWeight: 700 }}>ID de Referencia</label>
-                                                    <input value={destinationId} onChange={e => setDestinationId(e.target.value)} />
+                                                    <label style={{ fontWeight: 700 }}>ID de Referencia / Banco Destino</label>
+                                                    <input value={destinationId} onChange={e => setDestinationId(e.target.value)} placeholder="Ej: Banco Unión - 123456" />
                                                 </div>
                                             )}
+
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Motivo de la operación</label>
+                                                <input value={paymentReason} onChange={e => setPaymentReason(e.target.value)} placeholder="Ej: Pago de servicios / Fondeo personal" title="Justificación de la operación" />
+                                            </div>
+
+                                            <div className="input-group">
+                                                <label style={{ fontWeight: 700 }}>Documento de Respaldo (Opcional)</label>
+                                                <div style={{ border: '2px dashed #ccc', padding: '1rem', borderRadius: '12px', textAlign: 'center', cursor: 'pointer' }} onClick={() => document.getElementById('support_up_alt')?.click()}>
+                                                    <Upload size={20} style={{ margin: '0 auto 0.5rem' }} />
+                                                    <div style={{ fontSize: '0.8rem' }}>{supportDocument ? supportDocument.name : 'Haz clic para subir (PDF/Imagen)'}</div>
+                                                    <input id="support_up_alt" type="file" style={{ display: 'none' }} onChange={e => setSupportDocument(e.target.files?.[0] || null)} />
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
 
@@ -841,13 +959,21 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                     </div>
 
                                     <button
-                                        onClick={() => setStep(3)}
+                                        onClick={() => {
+                                            console.log('Transitioning to Step 3', { selectedRoute, amount, paymentReason, supportDocument, selectedSupplier });
+                                            setStep(3);
+                                        }}
                                         disabled={
-                                            (selectedRoute === 'bolivia_to_exterior' && (!amount || !paymentReason || !supportDocument)) ||
-                                            loading
+                                            loading ||
+                                            !amount ||
+                                            Number(amount) <= 0 ||
+                                            (selectedRoute === 'bolivia_to_exterior' && (!paymentReason || !supportDocument || !selectedSupplier)) ||
+                                            (selectedRoute === 'crypto_to_crypto' && !destinationId) ||
+                                            ((selectedRoute === 'us_to_bolivia' || selectedRoute === 'us_to_wallet') && !destinationId && !clientCryptoAddress)
                                         }
                                         className="btn-primary"
-                                        style={{ marginTop: '1rem' }}
+                                        style={{ marginTop: '1rem', opacity: (loading || !amount || Number(amount) <= 0) ? 0.5 : 1 }}
+                                        title={(!amount || Number(amount) <= 0) ? "Ingresa un monto válido" : "Completa todos los campos requeridos"}
                                     >
                                         {(selectedRoute !== 'bolivia_to_exterior' && !amount) ? 'Solicitar Datos de Riel' : 'Continuar a Revisión de Expediente'}
                                     </button>
@@ -890,10 +1016,30 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
 
                                     {waitingForEvidence ? (
                                         <div style={{ textAlign: 'left', background: '#FFFBEB', padding: '1.5rem', borderRadius: '16px', border: '1px solid #FEF3C7' }}>
-                                            <h4 style={{ color: '#92400E' }}>Datos del Riel Financiero (Tercero)</h4>
                                             <div style={{ margin: '1rem 0', fontSize: '0.9rem' }}>
                                                 {fundingMethod === 'bs' ? (
-                                                    <div><b>Banco:</b> Mercantil Santa Cruz<br /><b>Cuenta:</b> 401-2345678-9<br /><b>Monto:</b> {amountBs} Bs</div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                        <h4 style={{ color: '#B45309', margin: 0, fontSize: '1rem', fontWeight: 700 }}>Datos del Riel Financiero autorizado PSAV por Guira (tercero)</h4>
+
+                                                        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'start', flexWrap: 'wrap' }}>
+                                                            {qrUrl && (
+                                                                <div style={{ background: '#fff', padding: '0.75rem', borderRadius: '12px', border: '1px solid #E2E8F0', flexShrink: 0 }}>
+                                                                    <img src={qrUrl} alt="QR Pago" style={{ width: '160px', height: '160px', objectFit: 'contain' }} />
+                                                                    <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Escanear para pagar</div>
+                                                                </div>
+                                                            )}
+                                                            <div style={{ flex: 1, minWidth: '200px' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                                                    <div><b>Banco:</b> Mercantil Santa Cruz</div>
+                                                                    <div><b>Cuenta:</b> 401-2345678-9</div>
+                                                                    <div><b>Monto:</b> <span style={{ fontSize: '1.1rem', color: 'var(--primary)', fontWeight: 800 }}>{amountBs} Bs</span></div>
+                                                                </div>
+                                                                <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#FEF3C7', borderRadius: '8px', borderLeft: '4px solid #D97706', fontSize: '0.85rem', fontStyle: 'italic', lineHeight: 1.4 }}>
+                                                                    Deposite su transferencia a esta cuenta Bancaria del PSAV autorizado para la transformación de su dinero a USDC
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 ) : (
                                                     <div>Realiza el envío de <b>{amount} {currency}</b> a la dirección asignada en tu historial.</div>
                                                 )}
@@ -1042,27 +1188,82 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             </td>
                                                             <td style={{ padding: '1.25rem' }}>
                                                                 <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                                    {trans.business_purpose === 'supplier_payment' && user && (
-                                                                        <button
-                                                                            onClick={() => generatePaymentPDF({
-                                                                                id: trans.id,
-                                                                                userName: user.email || 'Usuario',
-                                                                                supplierName: trans.metadata?.supplier?.name || trans.metadata?.swift_details?.bankName || 'Destinatario',
-                                                                                date: trans.created_at,
-                                                                                amount: trans.amount,
-                                                                                currency: trans.currency,
-                                                                                fee: trans.fee_amount || 0,
-                                                                                netAmount: trans.net_amount || trans.amount,
-                                                                                exchangeRate: trans.exchange_rate,
-                                                                                type: trans.transfer_kind,
-                                                                                paymentReason: trans.metadata?.payment_reason
-                                                                            })}
-                                                                            className="btn-secondary"
-                                                                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem' }}
-                                                                        >
-                                                                            📄 PDF
-                                                                        </button>
-                                                                    )}
+                                                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                                                        {trans.support_document_url && (
+                                                                            <button
+                                                                                onClick={() => window.open(trans.support_document_url, '_blank')}
+                                                                                className="btn-secondary"
+                                                                                title="Ver Factura/Respaldo"
+                                                                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.65rem', background: '#F0F9FF', borderColor: '#BAE6FD', color: '#0369A1' }}
+                                                                            >
+                                                                                📁
+                                                                            </button>
+                                                                        )}
+                                                                        {trans.evidence_url && (
+                                                                            <button
+                                                                                onClick={() => window.open(trans.evidence_url, '_blank')}
+                                                                                className="btn-secondary"
+                                                                                title="Ver Comprobante Cliente"
+                                                                                style={{ padding: '0.2rem 0.4rem', fontSize: '0.65rem', background: '#FFFBEB', borderColor: '#FEF3C7', color: '#B45309' }}
+                                                                            >
+                                                                                🧾
+                                                                            </button>
+                                                                        )}
+                                                                        {!trans.evidence_url && trans.is_payment_order && (trans.status === 'created' || trans.status === 'waiting_deposit') && (
+                                                                            <button
+                                                                                onClick={async () => {
+                                                                                    const fileInput = document.createElement('input');
+                                                                                    fileInput.type = 'file';
+                                                                                    fileInput.accept = 'image/*,application/pdf';
+                                                                                    fileInput.onchange = async (e: any) => {
+                                                                                        const file = e.target.files?.[0];
+                                                                                        if (file) {
+                                                                                            setLoading(true);
+                                                                                            try {
+                                                                                                await uploadOrderEvidence(trans.id, file, 'evidence_url');
+                                                                                                // También actualizamos el estado a waiting_deposit si estaba en created
+                                                                                                if (trans.status === 'created') {
+                                                                                                    await supabase.from('payment_orders').update({ status: 'waiting_deposit' }).eq('id', trans.id);
+                                                                                                }
+                                                                                                alert('Comprobante subido con éxito');
+                                                                                                fetchPaymentsData();
+                                                                                            } catch (err: any) {
+                                                                                                alert('Error al subir: ' + err.message);
+                                                                                            } finally {
+                                                                                                setLoading(false);
+                                                                                            }
+                                                                                        }
+                                                                                    };
+                                                                                    fileInput.click();
+                                                                                }}
+                                                                                className="btn-primary"
+                                                                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem', background: '#D97706', border: 'none' }}
+                                                                            >
+                                                                                Subir Comprobante
+                                                                            </button>
+                                                                        )}
+                                                                        {trans.business_purpose === 'supplier_payment' && user && (
+                                                                            <button
+                                                                                onClick={() => generatePaymentPDF({
+                                                                                    id: trans.id,
+                                                                                    userName: user.email || 'Usuario',
+                                                                                    supplierName: trans.metadata?.supplier?.name || trans.metadata?.swift_details?.bankName || 'Destinatario',
+                                                                                    date: trans.created_at,
+                                                                                    amount: trans.amount,
+                                                                                    currency: trans.currency,
+                                                                                    fee: trans.fee_amount || 0,
+                                                                                    netAmount: trans.net_amount || trans.amount,
+                                                                                    exchangeRate: trans.exchange_rate,
+                                                                                    type: trans.transfer_kind,
+                                                                                    paymentReason: trans.metadata?.payment_reason
+                                                                                })}
+                                                                                className="btn-secondary"
+                                                                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.65rem' }}
+                                                                            >
+                                                                                📄 PDF
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                     <span style={{ fontWeight: 700 }}>
                                                                         {trans.amount.toLocaleString()} {trans.currency}
                                                                     </span>
@@ -1070,6 +1271,11 @@ export const PaymentsPanel: React.FC<{ initialRoute?: any; onRouteClear?: () => 
                                                             </td>
                                                         </tr>
                                                     ))}
+                                                    {bridgeTransfers.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={4} style={{ padding: '3rem', textAlign: 'center', opacity: 0.5 }}>No hay movimientos registrados.</td>
+                                                        </tr>
+                                                    )}
                                                 </tbody>
                                             </table>
                                         </div>

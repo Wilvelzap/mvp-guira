@@ -69,19 +69,33 @@ export const StaffPanel: React.FC = () => {
         fetchData()
     }, [activeTab])
 
+    useEffect(() => {
+        if (selectedItem) {
+            setStaffExchangeRate(selectedItem.exchange_rate_applied?.toString() || '')
+            setStaffConvertedAmount(selectedItem.amount_converted?.toString() || '')
+            setStaffFee(selectedItem.fee_total?.toString() || '')
+            setStaffReference(selectedItem.metadata?.reference || '')
+        } else {
+            setStaffExchangeRate('')
+            setStaffConvertedAmount('')
+            setStaffFee('')
+            setStaffReference('')
+        }
+    }, [selectedItem])
+
     const fetchData = async () => {
         setIsLoadingData(true)
         setItems([]) // Clear current items to avoid ghost data
         let query: any
 
         if (activeTab === 'onboarding') {
-            query = supabase.from('onboarding').select('*, profiles(email)').order('updated_at', { ascending: false })
+            query = supabase.from('onboarding').select('*, profiles(email, full_name)').order('updated_at', { ascending: false })
         } else if (activeTab === 'payins') {
-            query = supabase.from('payin_routes').select('*, profiles(email)').order('created_at', { ascending: false })
+            query = supabase.from('payin_routes').select('*, profiles(email, full_name)').order('created_at', { ascending: false })
         } else if (activeTab === 'transfers') {
-            query = supabase.from('bridge_transfers').select('*, profiles(email)').order('created_at', { ascending: false })
+            query = supabase.from('bridge_transfers').select('*, profiles(email, full_name)').order('created_at', { ascending: false })
         } else if (activeTab === 'orders') {
-            query = supabase.from('payment_orders').select('*, profiles!user_id(email)').order('created_at', { ascending: false })
+            query = supabase.from('payment_orders').select('*, profiles!user_id(email, full_name)').order('created_at', { ascending: false })
         } else if (activeTab === 'config') {
             const { data: feeData } = await supabase.from('fees_config').select('*')
             if (feeData) setFees(feeData)
@@ -754,7 +768,7 @@ export const StaffPanel: React.FC = () => {
                                         <th style={{ padding: '1.25rem' }}>Usuario / Detalles</th>
                                         <th style={{ padding: '1.25rem' }}>Estado</th>
                                         <th style={{ padding: '1.25rem' }}>Fecha</th>
-                                        <th style={{ padding: '1.25rem', textAlign: 'right' }}>Acción</th>
+                                        <th style={{ padding: '1.25rem', textAlign: 'right' }}>Docs / Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -826,6 +840,24 @@ export const StaffPanel: React.FC = () => {
                                                                 <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{item.amount_origin} {item.origin_currency}</div>
                                                                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>→ {item.amount_converted || '?'} {item.destination_currency}</div>
                                                             </div>
+                                                        )}
+                                                        {(item.support_document_url || item.metadata?.support_document_url) && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); window.open(item.support_document_url || item.metadata?.support_document_url, '_blank'); }}
+                                                                style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '0.3rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                                title="Ver Factura/Respaldo"
+                                                            >
+                                                                📁
+                                                            </button>
+                                                        )}
+                                                        {(item.evidence_url || item.metadata?.evidence_url) && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); window.open(item.evidence_url || item.metadata?.evidence_url, '_blank'); }}
+                                                                style={{ background: '#FFFBEB', border: '1px solid #FEF3C7', padding: '0.3rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                                title="Ver Comprobante Cliente"
+                                                            >
+                                                                🧾
+                                                            </button>
                                                         )}
                                                         <button onClick={() => setSelectedItem(item)} className="btn-secondary" style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem' }}>
                                                             Revisar
@@ -1261,17 +1293,23 @@ export const StaffPanel: React.FC = () => {
                                     )}
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                        {selectedItem.support_document_url && (
-                                            <div style={{ background: '#F0F9FF', padding: '1rem', borderRadius: '12px', border: '1px solid #BAE6FD' }}>
-                                                <p style={{ fontSize: '0.75rem', color: '#0369A1', marginBottom: '0.5rem', fontWeight: 700 }}>Factura / Proforma (Respaldo):</p>
-                                                <button onClick={() => window.open(selectedItem.support_document_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem', background: '#fff' }}>Ver Factura</button>
+                                        {(selectedItem.support_document_url || selectedItem.metadata?.support_document_url) && (
+                                            <div style={{ background: '#F0F9FF', padding: '1.25rem', borderRadius: '12px', border: '2px solid #BAE6FD', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                                    <span style={{ fontSize: '1.2rem' }}>📁</span>
+                                                    <p style={{ fontSize: '0.8rem', color: '#0369A1', margin: 0, fontWeight: 800 }}>Factura / Proforma (Respaldo):</p>
+                                                </div>
+                                                <button onClick={() => window.open(selectedItem.support_document_url || selectedItem.metadata?.support_document_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.85rem', background: '#fff', fontWeight: 700, border: '1px solid #0369A1', color: '#0369A1' }}>Ver Documento de Respaldo</button>
                                             </div>
                                         )}
 
-                                        {selectedItem.evidence_url && (
-                                            <div style={{ background: '#FFFBEB', padding: '1rem', borderRadius: '12px', border: '1px solid #FEF3C7' }}>
-                                                <p style={{ fontSize: '0.75rem', color: '#B45309', marginBottom: '0.5rem', fontWeight: 700 }}>Comprobante de Movimiento en Riel (Cliente):</p>
-                                                <button onClick={() => window.open(selectedItem.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.75rem', background: '#fff' }}>Ver Comprobante</button>
+                                        {(selectedItem.evidence_url || selectedItem.metadata?.evidence_url) && (
+                                            <div style={{ background: '#FFFBEB', padding: '1.25rem', borderRadius: '12px', border: '2px solid #FEF3C7', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                                    <span style={{ fontSize: '1.2rem' }}>🧾</span>
+                                                    <p style={{ fontSize: '0.8rem', color: '#B45309', margin: 0, fontWeight: 800 }}>Comprobante Cliente (Fondeo):</p>
+                                                </div>
+                                                <button onClick={() => window.open(selectedItem.evidence_url || selectedItem.metadata?.evidence_url, '_blank')} className="btn-secondary" style={{ width: '100%', fontSize: '0.85rem', background: '#fff', fontWeight: 700, border: '1px solid #B45309', color: '#B45309' }}>Ver Comprobante Cliente</button>
                                             </div>
                                         )}
 
@@ -1337,7 +1375,7 @@ export const StaffPanel: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        {!selectedItem.support_document_url && !selectedItem.evidence_url && (!selectedItem.metadata?.staff_documents || selectedItem.metadata.staff_documents.length === 0) && (
+                                        {!selectedItem.support_document_url && !selectedItem.metadata?.support_document_url && !selectedItem.evidence_url && !selectedItem.metadata?.evidence_url && (!selectedItem.metadata?.staff_documents || selectedItem.metadata.staff_documents.length === 0) && (
                                             <div style={{ padding: '1rem', textAlign: 'center', opacity: 0.5, fontSize: '0.8rem', border: '1px dashed var(--border)', borderRadius: '12px' }}>
                                                 No hay documentos adjuntos
                                             </div>
